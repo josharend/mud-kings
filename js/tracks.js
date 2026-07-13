@@ -37,6 +37,7 @@ TRK.defs = [
     build: (g) => {
       _rect(g, 3, 4, 28, 25, '.');
       _block(g, 10, 10, 21, 19);
+      _rect(g, 10, 13, 21, 15, 'M');  // shortcut: mud lane straight through the island
       _rect(g, 12, 5, 19, 7, 'J');
       _rect(g, 3, 13, 6, 16, 'M');
       _rect(g, 15, 20, 16, 25, 'S');
@@ -46,7 +47,7 @@ TRK.defs = [
     slots: [[13.5, 21.3], [12, 22.3], [13.5, 23.3], [12, 24.3]],
     startDir: 0,
     pickups: [{ x: 21.5, y: 5, k: 'nitro' }, { x: 4.5, y: 14.5, k: 'money' },
-              { x: 25.5, y: 17, k: 'money' }],
+              { x: 25.5, y: 17, k: 'money' }, { x: 15.5, y: 14, k: 'nitro' }],
   },
   {
     name: 'THE HOURGLASS',
@@ -111,6 +112,7 @@ TRK.defs = [
     build: (g) => {
       _rect(g, 3, 4, 28, 25, '.');
       _block(g, 9, 9, 22, 18);
+      _rect(g, 9, 13, 22, 15, 'M');  // shortcut: mud lane straight through the island
       _rect(g, 11, 5, 20, 6, 'J');
       _rect(g, 3, 12, 4, 16, 'M');
       _rect(g, 24, 11, 27, 13, 'W');
@@ -121,7 +123,7 @@ TRK.defs = [
     slots: [[15.5, 20.5], [14, 21.5], [15.5, 22.5], [14, 23.5]],
     startDir: 0,
     pickups: [{ x: 15.5, y: 5.5, k: 'nitro' }, { x: 3.5, y: 14, k: 'money' },
-              { x: 25.5, y: 12, k: 'money' }],
+              { x: 25.5, y: 12, k: 'money' }, { x: 15.5, y: 14, k: 'money' }],
   },
   {
     name: 'SIDEWINDER',

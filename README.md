@@ -45,11 +45,14 @@ lift you back onto the racing line.
 
 A season runs all eight base tracks, one per race:
 
-1. **DUST BOWL** — classic oval, mogul field up top, mud on the left.
+1. **DUST BOWL** — classic oval, mogul field up top, mud on the left. Has a
+   **mud shortcut** straight through the island — risky, but it can cut a
+   real chunk off the lap if you commit to it.
 2. **THE HOURGLASS** — crossover pinch through a water splash, head-on traffic.
 3. **SPLASHDOWN** — lane-choice water hazards, mud corner. *(winter)*
 4. **HAIRPIN HAVOC** — a wall spur forces a tight chicane; water on the exit.
-5. **THE COLOSSEUM** — big fast oval around a central island; moguls and a pond.
+5. **THE COLOSSEUM** — big fast oval around a central island; moguls, a pond,
+   and its own **mud shortcut** across the infield.
 6. **SIDEWINDER** — two offset islands make an S-weave. *(night)*
 7. **THE GAUNTLET** — wide horizontal speedway, big mogul field. *(winter)*
 8. **THE HOOK** — an L-shaped island; the loop wraps a hooked infield. *(night)*

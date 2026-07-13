@@ -8,10 +8,18 @@ const SPR = {
     { name: 'YELLOW', body: '#e8c020', light: '#f8e070', dark: '#a08010' },
     { name: 'PURPLE', body: '#9040c8', light: '#b878e8', dark: '#5c2884' },
   ],
-  trucks: [],   // [palette][chassis][16] canvases 32x32
+  trucks: [],   // [palette][chassis][16] canvases FRAMExFRAME
   flames: [],   // [16][2] canvases 48x48
-  FRAME: 32,
+  FRAME: 40,
   FLAME_FRAME: 48,
+};
+
+// small color-mixing helpers so we can get 5-tone shading without bloating the palette data
+SPR._hex2rgb = (hex) => { const n = parseInt(hex.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+SPR._rgb2hex = (r, g, b) => '#' + [r, g, b].map(v => U.clamp(v | 0, 0, 255).toString(16).padStart(2, '0')).join('');
+SPR._mix = (hexA, hexB, t) => {
+  const a = SPR._hex2rgb(hexA), b = SPR._hex2rgb(hexB);
+  return SPR._rgb2hex(a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t);
 };
 
 // chassis: stat mods are added on top of upgrade-level stats
@@ -34,44 +42,62 @@ SPR.headingIndex = (h) => {
 };
 
 SPR._drawTruckBase = (pal, chassis) => {
-  const c = U.mkCanvas(26, 26);
+  const c = U.mkCanvas(28, 28);
   const g = c.getContext('2d');
   const R = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
 
-  // tires (front 6x7, rear 6x8 — rears bigger, off-road style)
-  const tire = (x, y, h) => {
-    R(x, y, 6, h, '#14110e');
-    R(x + 1, y + 1, 4, h - 2, '#2b2622');
-    R(x + 2, y + Math.floor(h / 2) - 1, 2, 2, '#96a0a8'); // hub
-  };
-  tire(2, 3, 7); tire(18, 3, 7);    // front
-  tire(2, 16, 8); tire(18, 16, 8);  // rear
+  const hi = SPR._mix(pal.light, '#ffffff', 0.45);     // chrome-bright highlight
+  const deep = SPR._mix(pal.dark, '#000000', 0.4);     // deep shadow rim
+  const chrome = '#e8ecf0', chromeDk = '#8a949e';
 
-  // chassis + body
-  R(8, 2, 10, 23, pal.dark);          // under-chassis
-  R(9, 1, 8, 1, '#494f55');           // front bumper
-  R(8, 2, 10, 6, pal.body);           // hood
-  R(12, 2, 2, 6, pal.light);          // racing stripe
-  R(9, 8, 8, 3, '#1c2f4a');           // windshield
-  R(10, 8, 2, 1, '#85aed6');          // glint
-  R(9, 11, 8, 4, pal.body);           // cab roof
-  R(9, 11, 8, 1, pal.light);          // roof highlight
-  R(9, 15, 8, 1, '#c9ced2');          // roll bar
-  R(8, 16, 10, 9, pal.dark);          // bed shell
-  R(9, 17, 8, 7, '#241a10');          // bed interior
-  R(11, 19, 4, 4, '#14110e');         // spare tire
-  R(12, 20, 2, 2, '#4c5258');
-  R(8, 2, 1, 13, pal.light);          // lit side (left)
-  R(17, 2, 1, 13, pal.dark);          // shaded side (right)
+  // big knobby off-road tires: mid-tone sidewall with dark tread-groove bands cut across it, bright hub
+  const tire = (x, y, w, h, knobs) => {
+    R(x, y, w, h, '#413a32');           // sidewall base (mid-tone so grooves actually read)
+    R(x + 1, y + 1, w - 2, h - 2, '#2b2622');
+    for (let i = 0; i < knobs; i++) {
+      const ky = y + Math.round((i + 0.5) * h / knobs);
+      R(x, ky, w, 1, '#0c0a08');        // dark tread groove crossing the full tire
+    }
+    R(x, y, 1, h, '#0c0a08'); R(x + w - 1, y, 1, h, '#0c0a08'); // side edges
+    R(x + (w >> 1) - 1, y + (h >> 1) - 1, 2, 2, '#c4ccd2');
+  };
+  tire(1, 2, 7, 8, 3);   tire(20, 2, 7, 8, 3);    // front
+  tire(0, 15, 8, 12, 4); tire(20, 15, 8, 12, 4);  // rear — noticeably bigger
+
+  // mud flaps behind the rears
+  R(7, 25, 2, 3, '#1c1a18'); R(19, 25, 2, 3, '#1c1a18');
+
+  // chassis + body, 5-tone shading for real depth at speed
+  R(9, 1, 10, 25, deep);              // under-chassis / deep shadow rim
+  R(9, 0, 10, 1, chromeDk);           // front bumper
+  R(9, 1, 10, 7, pal.body);           // hood
+  R(9, 1, 1, 7, hi);                  // hood lit edge
+  R(19, 1, 1, 7, pal.dark);           // hood shaded edge
+  R(13, 1, 3, 7, pal.light);          // racing stripe
+  R(14, 1, 1, 7, hi);                 // stripe chrome glint
+  R(10, 0, 2, 1, chrome); R(17, 0, 2, 1, chrome); // headlights
+  R(10, 9, 8, 3, '#131e30');          // windshield
+  R(11, 9, 2, 1, '#8fb8e0');          // glint
+  R(9, 12, 10, 4, pal.body);          // cab roof
+  R(9, 12, 10, 1, hi);                // roof highlight
+  R(9, 16, 10, 1, chrome);            // roll bar
+  R(9, 17, 10, 9, deep);              // bed shell
+  R(10, 18, 8, 7, '#241a10');         // bed interior
+  R(12, 20, 5, 5, '#100d0a');         // spare tire
+  R(13, 21, 3, 3, '#4c5258');
+  R(9, 1, 1, 16, hi);                 // lit side (left)
+  R(18, 1, 1, 16, pal.dark);          // shaded side (right)
 
   if (chassis === 1) {                // JACKRABBIT: rear spoiler + hood scoop
-    R(6, 24, 14, 2, '#c9ced2');
-    R(6, 22, 2, 2, '#494f55'); R(18, 22, 2, 2, '#494f55');
-    R(11, 3, 4, 3, '#1c2f4a');
+    R(6, 26, 16, 2, chrome);
+    R(6, 24, 2, 2, chromeDk); R(20, 24, 2, 2, chromeDk);
+    R(12, 2, 4, 4, '#131e30');
   } else if (chassis === 2) {         // BULLDOG: bull bar + amber roof lights
-    R(7, 0, 12, 2, '#494f55');
-    R(8, 0, 1, 3, '#3a3f44'); R(17, 0, 1, 3, '#3a3f44');
-    for (const lx of [10, 12, 14, 16]) R(lx, 15, 1, 1, '#ffd040');
+    R(7, 0, 14, 1, chromeDk);
+    R(8, 0, 1, 4, '#3a3f44'); R(19, 0, 1, 4, '#3a3f44');
+    for (const lx of [11, 13, 15, 17]) R(lx, 16, 1, 1, '#ffd040');
+  } else {                            // MUDCAT: modest hood scoop
+    R(12, 2, 4, 2, deep);
   }
   return c;
 };
@@ -130,7 +156,7 @@ SPR.init = () => {
         g.imageSmoothingEnabled = false;
         g.translate(F / 2, F / 2);
         g.rotate(i * Math.PI / 8);
-        g.drawImage(base, -13, -13);
+        g.drawImage(base, -14, -14);
         g.setTransform(1, 0, 0, 1, 0, 0);
         SPR._outline(c);
         frames.push(c);

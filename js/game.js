@@ -6,6 +6,7 @@ const TUNE = {
   RADIUS: 7,            // truck collision radius vs walls
   TRUCK_R: 8,           // truck vs truck
   WP_RADIUS: 48,
+  WP_LOOKAHEAD: 7,      // waypoints scanned ahead — lets a track shortcut skip indices legally
   DRAG: 1.15,
   GRAV: 900,
   PAYOUT: [12000, 8000, 5500, 3500],
@@ -470,8 +471,11 @@ GAME._physics = (t, dt, attract) => {
   if (!air) {
     if (terrain === 'M') {
       drag += 3.2; clampMult = 0.5;
-      if (t.lastTerrain !== 'M') { if (!t.isAI) SND.mudSquelch(); }
-      if ((G.frame + t.color) % 4 === 0) GAME._spawnMud(t);
+      if (t.lastTerrain !== 'M') {
+        t.vx *= 0.82; t.vy *= 0.82; // felt "bog" the instant you plow in
+        if (!t.isAI) SND.mudSquelch();
+      }
+      if ((G.frame + t.color) % 3 === 0) GAME._spawnMud(t);
     } else if (terrain === 'W') {
       if (onIce) {
         drag = Math.max(0.35, drag - 0.7); // ice barely slows you — it just stops gripping
@@ -519,7 +523,7 @@ GAME._physics = (t, dt, attract) => {
   const sideX = nx + Math.sign(t.vx) * r;
   if (t.vx !== 0 && probes(sideX, t.y)) {
     if (Math.abs(t.vx) > 80) { GAME._hitWall(t, Math.abs(t.vx)); }
-    t.vx = -t.vx * 0.35;
+    t.vx = -t.vx * 0.42;
     nx = t.x;
   }
   t.x = nx;
@@ -530,7 +534,7 @@ GAME._physics = (t, dt, attract) => {
   const sideY = ny + Math.sign(t.vy) * r;
   if (t.vy !== 0 && probesY(t.x, sideY)) {
     if (Math.abs(t.vy) > 80) { GAME._hitWall(t, Math.abs(t.vy)); }
-    t.vy = -t.vy * 0.35;
+    t.vy = -t.vy * 0.42;
     ny = t.y;
   }
   t.y = ny;
@@ -542,12 +546,20 @@ GAME._physics = (t, dt, attract) => {
   // bob
   t.bobPhase += spd * dt * 0.14;
 
-  // waypoints / laps
+  // waypoints / laps — scans a short window ahead so a truck cutting through a
+  // track shortcut can legally skip the indices it bypassed (lap only counts
+  // when the jump lands exactly on the wrap-around marker, so cutting through
+  // the middle of the map can never accidentally credit a full lap)
   const wps = G.track.wps;
-  const wp = wps[t.wpIdx % wps.length];
-  if (U.dist(t.x, t.y, wp[0], wp[1]) < TUNE.WP_RADIUS) {
-    t.wpIdx++;
-    if (t.wpIdx % wps.length === 0 && t.wpIdx > 0) {
+  const n = wps.length;
+  let reach = -1;
+  for (let k = Math.min(TUNE.WP_LOOKAHEAD, n) - 1; k >= 0; k--) {
+    const wp = wps[(t.wpIdx + k) % n];
+    if (U.dist(t.x, t.y, wp[0], wp[1]) < TUNE.WP_RADIUS) { reach = k; break; }
+  }
+  if (reach >= 0) {
+    t.wpIdx += reach + 1;
+    if (t.wpIdx % n === 0) {
       t.lap++;
       if (!t.finished) {
         if (t.lap > TUNE.LAPS) {
@@ -589,7 +601,7 @@ GAME._hitWall = (t, impact) => {
   if (!t.isAI || U.dist(t.x, t.y, G.trucks[0].x, G.trucks[0].y) < 220) {
     impact > 160 ? SND.crash() : SND.thud();
   }
-  if (!t.isAI && impact > 160) G.shake = 0.2;
+  if (!t.isAI) G.shake = Math.max(G.shake, U.clamp(impact / 700, 0.08, 0.35));
   GAME._spawnDustRing(t);
 };
 
@@ -608,12 +620,15 @@ GAME._truckCollisions = () => {
     const van = a.vx * nx + a.vy * ny;
     const vbn = b.vx * nx + b.vy * ny;
     if (van - vbn > 0) {
-      const e = 0.65;
+      const e = 0.76; // forceful bumper-car bounce, arcade-style
       const m = (van + vbn) / 2, dv = (van - vbn) / 2;
       const van2 = m - dv * e, vbn2 = m + dv * e;
       a.vx += (van2 - van) * nx; a.vy += (van2 - van) * ny;
       b.vx += (vbn2 - vbn) * nx; b.vy += (vbn2 - vbn) * ny;
-      if (van - vbn > 90 && (!a.isAI || !b.isAI || G.mode === 'title')) SND.thud();
+      if (van - vbn > 90 && (!a.isAI || !b.isAI || G.mode === 'title')) {
+        SND.thud();
+        if (!a.isAI || !b.isAI) G.shake = Math.max(G.shake, 0.15);
+      }
     }
   }
 };
