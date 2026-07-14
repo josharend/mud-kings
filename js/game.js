@@ -6,7 +6,9 @@ const TUNE = {
   RADIUS: 7,            // truck collision radius vs walls
   TRUCK_R: 8,           // truck vs truck
   WP_RADIUS: 48,
-  WP_LOOKAHEAD: 7,      // waypoints scanned ahead — lets a track shortcut skip indices legally
+  WP_LOOKAHEAD: 4,      // waypoints scanned ahead — lets a track shortcut skip indices legally.
+                         // Must stay well below the smallest track's waypoint count (6) or a
+                         // truck lingering near its target could false-trigger a full-lap wrap.
   DRAG: 1.15,
   GRAV: 900,
   PAYOUT: [12000, 8000, 5500, 3500],

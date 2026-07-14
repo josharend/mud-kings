@@ -24,10 +24,65 @@ const _mkGrid = () => {
 const _rect = (g, x0, y0, x1, y1, ch) => {
   for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) g[y][x] = ch;
 };
-const _block = (g, x0, y0, x1, y1) => { // tire-wall rimmed infield block
-  _rect(g, x0, y0, x1, y1, 'T');
-  if (x1 - x0 > 1 && y1 - y0 > 1) _rect(g, x0 + 1, y0 + 1, x1 - 1, y1 - 1, ',');
+
+// carves a corridor of `tile` along a closed polyline (tile units), radius halfWidth —
+// this is how every track is built now: the arcade's tracks were narrow winding single-lane
+// ribbons, not wide rectangles around one island, so the centerline IS the racing line.
+// `bulge` (extra radius, tile units) widens a circle AT each vertex on top of the segment
+// carving: two perpendicular halfWidth-strips meeting at a sharp corner leave an uncovered
+// pocket just past the corner on the outside of the turn, which overshooting trucks clip —
+// the bulge fills that pocket so turns actually have room to be driven.
+const _carvePath = (g, pts, halfWidth, tile, bulge) => {
+  const stampCircle = (cx, cy, r) => {
+    const rx0 = Math.max(0, Math.floor(cx - r)), rx1 = Math.min(TRK.COLS - 1, Math.ceil(cx + r));
+    const ry0 = Math.max(0, Math.floor(cy - r)), ry1 = Math.min(TRK.ROWS - 1, Math.ceil(cy + r));
+    for (let ty = ry0; ty <= ry1; ty++) for (let tx = rx0; tx <= rx1; tx++) {
+      if (Math.hypot(tx + 0.5 - cx, ty + 0.5 - cy) <= r) g[ty][tx] = tile;
+    }
+  };
+  for (let i = 0; i < pts.length; i++) {
+    const [x0, y0] = pts[i];
+    const [x1, y1] = pts[(i + 1) % pts.length];
+    const dx = x1 - x0, dy = y1 - y0;
+    const dist = Math.hypot(dx, dy) || 0.001;
+    const steps = Math.max(1, Math.ceil(dist * 2));
+    for (let s = 0; s <= steps; s++) {
+      const t = s / steps;
+      stampCircle(x0 + dx * t, y0 + dy * t, halfWidth);
+    }
+  }
+  if (bulge) for (const [px, py] of pts) stampCircle(px, py, halfWidth + bulge);
 };
+// checkered start patch, safely inside the corridor at the path's first point
+const _startPatch = (g, p0) => _rect(g, Math.round(p0[0]) - 1, Math.round(p0[1]) - 1, Math.round(p0[0]), Math.round(p0[1]), 'S');
+// facing direction from the start point toward the first real corner
+const _startDir = (p0, p1) => Math.atan2(p1[1] - p0[1], p1[0] - p0[0]);
+// 2x2 grid of start slots, tucked behind p0 along the reverse of the p0->p1 direction
+const _mkSlots = (p0, p1) => {
+  const dx = p1[0] - p0[0], dy = p1[1] - p0[1];
+  const d = Math.hypot(dx, dy) || 1;
+  const fx = dx / d, fy = dy / d, px = -fy, py = fx;
+  const slots = [];
+  for (let row = 0; row < 2; row++) for (let col = 0; col < 2; col++) {
+    const back = 1.3 + row * 1.4, off = (col - 0.5) * 1.7;
+    slots.push([p0[0] - fx * back + px * off, p0[1] - fy * back + py * off]);
+  }
+  return slots;
+};
+
+// ---------- track centerlines (tile units) ----------
+// Each is a closed loop: point[i] connects to point[i+1], wrapping last-to-first.
+// Grid discipline: turn columns/rows are always >=5 tiles apart so corridors (halfWidth
+// 1.4-2.2) never bleed into each other. This is what replaced the old "wide ring around
+// one island" tracks with real winding, narrow, technical circuits.
+const PATH_DUSTBOWL  = [[8, 23], [8, 18], [18, 18], [18, 12], [8, 12], [8, 7], [18, 7], [25, 7], [25, 23]];
+const PATH_HOURGLASS = [[8, 22], [8, 7], [13, 7], [13, 22], [18, 22], [18, 7], [23, 7], [23, 22]];
+const PATH_SPLASHDOWN = [[8, 7], [8, 12], [18, 12], [18, 18], [8, 18], [8, 23], [18, 23], [25, 23], [25, 7]];
+const PATH_HAIRPIN   = [[8, 23], [8, 19], [18, 19], [18, 15], [8, 15], [8, 11], [18, 11], [18, 7], [25, 7], [25, 23]];
+const PATH_COLOSSEUM = [[8, 23], [8, 7], [25, 7], [25, 15], [14, 15], [14, 23]];
+const PATH_SIDEWINDER = [[23, 22], [23, 7], [18, 7], [18, 22], [13, 22], [13, 7], [8, 7], [8, 22]];
+const PATH_GAUNTLET  = [[23, 23], [23, 7], [13, 7], [13, 18], [7, 18], [7, 23]];
+const PATH_HOOK       = [[8, 22], [8, 7], [23, 7], [23, 22], [18, 22], [18, 17], [13, 17], [13, 22]];
 
 // ---------- track definitions ----------
 // wps/slots/pickups in tile units (1 unit = 16px)
@@ -35,148 +90,115 @@ TRK.defs = [
   {
     name: 'DUST BOWL',
     build: (g) => {
-      _rect(g, 3, 4, 28, 25, '.');
-      _block(g, 10, 10, 21, 19);
-      _rect(g, 10, 13, 21, 15, 'M');  // shortcut: mud lane straight through the island
-      _rect(g, 12, 5, 19, 7, 'J');
-      _rect(g, 3, 13, 6, 16, 'M');
-      _rect(g, 15, 20, 16, 25, 'S');
+      _carvePath(g, PATH_DUSTBOWL, 1.8, '.', 0.8);
+      _rect(g, 12, 12, 15, 18, 'M');       // shortcut: mud connector cutting the row12<->row18 turn
+      _rect(g, 14, 17, 17, 18, 'J');       // moguls launch you into the column-18 turn
+      _rect(g, 10, 7, 13, 8, 'M');
+      _startPatch(g, PATH_DUSTBOWL[0]);
     },
-    wps: [[20, 22.5], [25.5, 21], [25.5, 14], [25.5, 8.5], [21, 6.5], [15.5, 6.5],
-          [10, 6.5], [6.5, 8.5], [7.5, 14], [6.5, 19], [8.5, 22.5], [12.5, 22.5]],
-    slots: [[13.5, 21.3], [12, 22.3], [13.5, 23.3], [12, 24.3]],
-    startDir: 0,
-    pickups: [{ x: 21.5, y: 5, k: 'nitro' }, { x: 4.5, y: 14.5, k: 'money' },
-              { x: 25.5, y: 17, k: 'money' }, { x: 15.5, y: 14, k: 'nitro' }],
+    wps: PATH_DUSTBOWL,
+    slots: _mkSlots(PATH_DUSTBOWL[0], PATH_DUSTBOWL[1]),
+    startDir: _startDir(PATH_DUSTBOWL[0], PATH_DUSTBOWL[1]),
+    pickups: [{ x: 13, y: 15, k: 'nitro' }, { x: 21, y: 8, k: 'money' }, { x: 5, y: 15, k: 'money' }],
   },
   {
     name: 'THE HOURGLASS',
     build: (g) => {
-      _rect(g, 3, 4, 28, 25, '.');
-      _block(g, 3, 12, 11, 17);
-      _block(g, 20, 12, 28, 17);
-      _rect(g, 11, 4, 20, 6, 'J');
-      _rect(g, 13, 21, 18, 23, 'M');
-      _rect(g, 13, 14, 18, 15, 'W');
-      _rect(g, 12, 18, 13, 25, 'S');
+      _carvePath(g, PATH_HOURGLASS, 1.8, '.', 0.8);
+      _rect(g, 12, 13, 14, 16, 'M');       // the pinch: mud waist in the middle column
+      _rect(g, 17, 10, 19, 12, 'W');
+      _rect(g, 7, 14, 9, 16, 'J');          // mid-pass, clear of the turn vertices
+      _startPatch(g, PATH_HOURGLASS[0]);
     },
-    wps: [[16, 19.5], [21.5, 20.5], [25.5, 20], [21, 18.8], [17.5, 16.5], [17, 12.5],
-          [20, 10.3], [24, 8.6], [25.5, 6.2], [16, 5], [6.5, 6.2], [6, 8.6],
-          [9, 10.5], [14.5, 12.5], [14.5, 16.5], [11, 18.8], [6.5, 20.3], [9, 21.8]],
-    slots: [[10.5, 19.5], [9, 20.5], [10.5, 21.5], [9, 22.5]],
-    startDir: 0,
-    pickups: [{ x: 16, y: 14.8, k: 'nitro' }, { x: 15.5, y: 22, k: 'money' },
-              { x: 5.5, y: 5.5, k: 'money' }],
+    wps: PATH_HOURGLASS,
+    slots: _mkSlots(PATH_HOURGLASS[0], PATH_HOURGLASS[1]),
+    startDir: _startDir(PATH_HOURGLASS[0], PATH_HOURGLASS[1]),
+    pickups: [{ x: 13, y: 14, k: 'nitro' }, { x: 8, y: 15, k: 'money' }, { x: 23, y: 15, k: 'money' }],
   },
   {
     name: 'SPLASHDOWN',
     build: (g) => {
-      _rect(g, 3, 4, 28, 25, '.');
-      _block(g, 10, 10, 21, 19);
-      _rect(g, 23, 12, 26, 14, 'W');
-      _rect(g, 13, 4, 17, 6, 'W');
-      _rect(g, 4, 20, 8, 24, 'M');
-      _rect(g, 4, 11, 7, 14, 'J');
-      _rect(g, 15, 20, 16, 25, 'S');
+      _carvePath(g, PATH_SPLASHDOWN, 1.8, '.', 0.8);
+      _rect(g, 11, 12, 14, 13, 'W');
+      _rect(g, 11, 18, 14, 19, 'W');
+      _rect(g, 20, 23, 23, 24, 'M');
+      _rect(g, 9, 7, 12, 8, 'J');
+      _startPatch(g, PATH_SPLASHDOWN[0]);
     },
-    wps: [[20, 22.5], [25, 22], [27.5, 19], [27.5, 13], [26, 8.5], [21, 6.5],
-          [17.5, 7.8], [13, 7.8], [9.5, 6.5], [6.5, 8.5], [5.5, 12.5], [6, 16],
-          [6.5, 18.5], [9.5, 21.5], [12.5, 22.5]],
-    slots: [[13.5, 21.3], [12, 22.3], [13.5, 23.3], [12, 24.3]],
-    startDir: 0,
-    pickups: [{ x: 15, y: 5, k: 'nitro' }, { x: 24.5, y: 13, k: 'money' },
-              { x: 6, y: 22, k: 'money' }],
+    wps: PATH_SPLASHDOWN,
+    slots: _mkSlots(PATH_SPLASHDOWN[0], PATH_SPLASHDOWN[1]),
+    startDir: _startDir(PATH_SPLASHDOWN[0], PATH_SPLASHDOWN[1]),
+    pickups: [{ x: 16, y: 12, k: 'nitro' }, { x: 16, y: 18, k: 'money' }, { x: 22, y: 7, k: 'money' }],
   },
   {
     name: 'HAIRPIN HAVOC',
     build: (g) => {
-      _rect(g, 3, 4, 28, 25, '.');
-      _block(g, 9, 10, 22, 16);
-      _rect(g, 15, 20, 16, 25, 'T');
-      _rect(g, 11, 5, 20, 7, 'J');
-      _rect(g, 3, 12, 6, 15, 'M');
-      _rect(g, 19, 21, 22, 24, 'W');
-      _rect(g, 10, 19, 11, 25, 'S');
+      _carvePath(g, PATH_HAIRPIN, 1.4, '.', 0.9);   // narrowest track — deliberately the most technical
+      _rect(g, 12, 15, 14, 16, 'M');        // mid-pass, clear of the turn vertices
+      _rect(g, 11, 10, 13, 11, 'J');        // mid-pass, clear of the turn vertices
+      _startPatch(g, PATH_HAIRPIN[0]);
     },
-    wps: [[13, 20.5], [13.8, 18.2], [15.5, 17.6], [17.3, 18.4], [18.5, 20.3],
-          [21, 19.6], [24, 20.2], [26.3, 21.5], [26.3, 17], [26.3, 11], [25.5, 7],
-          [21.5, 6.2], [15.5, 6.2], [9.5, 6.4], [6.3, 8.5], [7.5, 13.5], [7, 16.5],
-          [6.3, 19], [6.5, 21.5], [9.5, 22]],
-    slots: [[8, 19.8], [6.5, 20.8], [8, 21.8], [6.5, 22.8]],
-    startDir: 0,
-    pickups: [{ x: 15.5, y: 17.5, k: 'nitro' }, { x: 20.5, y: 22.5, k: 'money' },
-              { x: 4.5, y: 13.5, k: 'money' }],
+    wps: PATH_HAIRPIN,
+    slots: _mkSlots(PATH_HAIRPIN[0], PATH_HAIRPIN[1]),
+    startDir: _startDir(PATH_HAIRPIN[0], PATH_HAIRPIN[1]),
+    pickups: [{ x: 13, y: 19, k: 'nitro' }, { x: 13, y: 7, k: 'money' }, { x: 25, y: 15, k: 'money' }],
   },
   {
     name: 'THE COLOSSEUM',
     build: (g) => {
-      _rect(g, 3, 4, 28, 25, '.');
-      _block(g, 9, 9, 22, 18);
-      _rect(g, 9, 13, 22, 15, 'M');  // shortcut: mud lane straight through the island
-      _rect(g, 11, 5, 20, 6, 'J');
-      _rect(g, 3, 12, 4, 16, 'M');
-      _rect(g, 24, 11, 27, 13, 'W');
-      _rect(g, 14, 19, 16, 25, 'S');
+      _carvePath(g, PATH_COLOSSEUM, 2.2, '.', 1.0);  // widest track — the grand sweeping one
+      _rect(g, 12, 7, 20, 8, 'J');
+      _rect(g, 20, 14, 23, 16, 'W');
+      _rect(g, 10, 22, 13, 23, 'M');
+      _startPatch(g, PATH_COLOSSEUM[0]);
     },
-    wps: [[20, 21.5], [25.5, 20], [26, 14], [25.5, 8], [22, 6.5], [16, 6.3],
-          [9, 6.5], [5.8, 8], [5.5, 14], [6, 20], [10, 22], [16, 22.3]],
-    slots: [[15.5, 20.5], [14, 21.5], [15.5, 22.5], [14, 23.5]],
-    startDir: 0,
-    pickups: [{ x: 15.5, y: 5.5, k: 'nitro' }, { x: 3.5, y: 14, k: 'money' },
-              { x: 25.5, y: 12, k: 'money' }, { x: 15.5, y: 14, k: 'money' }],
+    wps: PATH_COLOSSEUM,
+    slots: _mkSlots(PATH_COLOSSEUM[0], PATH_COLOSSEUM[1]),
+    startDir: _startDir(PATH_COLOSSEUM[0], PATH_COLOSSEUM[1]),
+    pickups: [{ x: 16, y: 7, k: 'nitro' }, { x: 8, y: 15, k: 'money' }, { x: 22, y: 15, k: 'money' }],
   },
   {
     name: 'SIDEWINDER',
     build: (g) => {
-      _rect(g, 3, 4, 28, 25, '.');
-      _block(g, 6, 8, 14, 13);
-      _block(g, 17, 16, 25, 20);
-      _rect(g, 19, 22, 21, 23, 'M');
-      _rect(g, 14, 5, 16, 6, 'W');
-      _rect(g, 26, 11, 27, 13, 'J');
-      _rect(g, 6, 20, 8, 25, 'S');
+      _carvePath(g, PATH_SIDEWINDER, 1.8, '.', 0.8);
+      _rect(g, 17, 13, 19, 16, 'M');
+      _rect(g, 12, 13, 14, 16, 'J');        // mid-pass, clear of the turn vertices
+      _rect(g, 7, 13, 9, 16, 'W');
+      _startPatch(g, PATH_SIDEWINDER[0]);
     },
-    wps: [[13, 22.5], [20, 22.5], [25, 22], [27.5, 17], [27, 10], [23, 6.5],
-          [16, 5.5], [9, 5.5], [4.5, 9], [4.5, 15], [5, 20], [8.5, 23]],
-    slots: [[8, 21.5], [6.5, 22.5], [8, 23.5], [6.5, 24.5]],
-    startDir: 0,
-    pickups: [{ x: 23, y: 7, k: 'nitro' }, { x: 4, y: 15, k: 'money' },
-              { x: 27, y: 17, k: 'money' }],
+    wps: PATH_SIDEWINDER,
+    slots: _mkSlots(PATH_SIDEWINDER[0], PATH_SIDEWINDER[1]),
+    startDir: _startDir(PATH_SIDEWINDER[0], PATH_SIDEWINDER[1]),
+    pickups: [{ x: 18, y: 14, k: 'nitro' }, { x: 23, y: 14, k: 'money' }, { x: 8, y: 14, k: 'money' }],
   },
   {
     name: 'THE GAUNTLET',
     build: (g) => {
-      _rect(g, 3, 4, 28, 25, '.');
-      _block(g, 7, 11, 24, 16);
-      _rect(g, 10, 5, 20, 7, 'J');
-      _rect(g, 9, 18, 13, 20, 'W');
-      _rect(g, 24, 8, 26, 10, 'M');
-      _rect(g, 8, 19, 10, 25, 'S');
+      _carvePath(g, PATH_GAUNTLET, 1.8, '.', 0.8);
+      _rect(g, 22, 12, 24, 14, 'M');
+      _rect(g, 11, 10, 14, 11, 'J');
+      _rect(g, 6, 20, 9, 22, 'W');
+      _rect(g, 17, 18, 20, 19, 'M');
+      _startPatch(g, PATH_GAUNTLET[0]);
     },
-    wps: [[14, 21], [20, 21], [25, 20], [27, 15], [26.5, 9], [22, 7.5],
-          [14, 7.5], [8, 8], [4.5, 13], [5, 18], [8, 20.5], [11, 21.3]],
-    slots: [[10, 20], [8.5, 21], [10, 22], [8.5, 23]],
-    startDir: 0,
-    pickups: [{ x: 15, y: 6, k: 'nitro' }, { x: 11, y: 19, k: 'money' },
-              { x: 25, y: 9, k: 'money' }],
+    wps: PATH_GAUNTLET,
+    slots: _mkSlots(PATH_GAUNTLET[0], PATH_GAUNTLET[1]),
+    startDir: _startDir(PATH_GAUNTLET[0], PATH_GAUNTLET[1]),
+    pickups: [{ x: 23, y: 16, k: 'nitro' }, { x: 13, y: 12, k: 'money' }, { x: 7, y: 20, k: 'money' }],
   },
   {
     name: 'THE HOOK',
     build: (g) => {
-      _rect(g, 3, 4, 28, 25, '.');
-      _block(g, 8, 8, 16, 13);
-      _block(g, 8, 8, 12, 20);
-      _rect(g, 13, 15, 16, 19, 'W');
-      _rect(g, 18, 8, 23, 10, 'J');
-      _rect(g, 3, 15, 4, 18, 'M');
-      _rect(g, 14, 21, 16, 25, 'S');
+      _carvePath(g, PATH_HOOK, 1.8, '.', 0.8);
+      _rect(g, 12, 7, 20, 8, 'J');
+      _rect(g, 14, 17, 17, 18, 'M');
+      _rect(g, 7, 14, 9, 16, 'W');
+      _startPatch(g, PATH_HOOK[0]);
     },
-    wps: [[20, 22], [25, 21], [26.5, 14], [24, 6.5], [17, 5.5], [10, 6],
-          [5.5, 7.5], [5, 13], [5, 19], [9, 22.5], [15, 23]],
-    slots: [[15.5, 21.5], [14, 22.5], [15.5, 23.5], [14, 24.5]],
-    startDir: 0,
-    pickups: [{ x: 20.5, y: 9, k: 'nitro' }, { x: 3.5, y: 16.5, k: 'money' },
-              { x: 14.5, y: 17, k: 'money' }],
+    wps: PATH_HOOK,
+    slots: _mkSlots(PATH_HOOK[0], PATH_HOOK[1]),
+    startDir: _startDir(PATH_HOOK[0], PATH_HOOK[1]),
+    pickups: [{ x: 15, y: 17, k: 'nitro' }, { x: 23, y: 14, k: 'money' }, { x: 8, y: 18, k: 'money' }],
   },
 ];
 
