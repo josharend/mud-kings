@@ -67,6 +67,19 @@ Races cycle through **day**, **night** (floodlights + headlights), and
 **winter** themes. In winter, water hazards freeze into ice — it barely slows
 you, it just stops gripping.
 
+## Graphics
+
+Every truck is prerendered pixel art with 7-tone rounded-metal shading, chrome
+bumpers and roll bars, knobby tread with lug-nut hubs, side mirrors, a light
+bar, and a sponsor number decal on the tailgate — each chassis adds its own
+silhouette (JACKRABBIT's spoiler, BULLDOG's bull bar, MUDCAT's snorkel). The
+stadium has a canopy roofline around the whole perimeter, a crowd of tiny
+people (not just colored dots), richer dirt/mud/grass/water texture, and
+mogul bumps with a proper highlight-and-shadow pop. Collisions throw sparks
+and a flash ring on hard hits; dust, mud, and mogul-landing particles are soft
+growing puffs instead of squares. The whole screen runs through a CRT pass —
+scanlines plus a vignette — for that real arcade-cabinet look.
+
 ## Architecture (plain globals, load order matters)
 
 `js/util.js` (math, seeded RNG, 3×5 bitmap font) → `js/sprites.js` (procedural

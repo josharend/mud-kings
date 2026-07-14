@@ -605,6 +605,7 @@ GAME._hitWall = (t, impact) => {
   }
   if (!t.isAI) G.shake = Math.max(G.shake, U.clamp(impact / 700, 0.08, 0.35));
   GAME._spawnDustRing(t);
+  if (impact > 160) { GAME._spawnSparks(t, 5); GAME._spawnImpactFlash(t.x, t.y); }
 };
 
 GAME._truckCollisions = () => {
@@ -630,6 +631,9 @@ GAME._truckCollisions = () => {
       if (van - vbn > 90 && (!a.isAI || !b.isAI || G.mode === 'title')) {
         SND.thud();
         if (!a.isAI || !b.isAI) G.shake = Math.max(G.shake, 0.15);
+        const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+        GAME._spawnSparks({ x: mx, y: my }, 4);
+        if (van - vbn > 160) GAME._spawnImpactFlash(mx, my);
       }
     }
   }
@@ -674,26 +678,26 @@ GAME._spawnDust = (t) => {
   G.particles.push({
     x: t.x - Math.cos(t.heading) * 10, y: t.y - Math.sin(t.heading) * 10,
     vx: (Math.random() - 0.5) * 20, vy: (Math.random() - 0.5) * 20 - 8,
-    life: 0.5, max: 0.5, size: 2 + Math.random() * 3, col: '200,160,110',
+    life: 0.5, max: 0.5, size: 2 + Math.random() * 3, col: '200,160,110', growAmt: 0.7,
   });
 };
 GAME._spawnMud = (t) => {
   for (let i = 0; i < 2; i++) G.particles.push({
     x: t.x, y: t.y, vx: (Math.random() - 0.5) * 90, vy: (Math.random() - 0.5) * 90,
-    life: 0.4, max: 0.4, size: 2, col: '90,56,30',
+    life: 0.4, max: 0.4, size: 2.5, col: '90,56,30', growAmt: 0.3, alphaMax: 0.85,
   });
 };
 GAME._spawnSplash = (t, n) => {
   for (let i = 0; i < n; i++) G.particles.push({
     x: t.x, y: t.y, vx: (Math.random() - 0.5) * 120, vy: (Math.random() - 0.5) * 120,
-    life: 0.35, max: 0.35, size: 2, col: '160,200,235',
+    life: 0.35, max: 0.35, size: 2, col: '160,200,235', growAmt: 0.15, alphaMax: 0.9,
   });
 };
 GAME._spawnIce = (t) => {
   G.particles.push({
     x: t.x - Math.cos(t.heading) * 9, y: t.y - Math.sin(t.heading) * 9,
     vx: (Math.random() - 0.5) * 60, vy: (Math.random() - 0.5) * 60,
-    life: 0.3, max: 0.3, size: 2, col: '240,250,255',
+    life: 0.3, max: 0.3, size: 2, col: '240,250,255', growAmt: 0.1,
   });
 };
 GAME._spawnDustRing = (t) => {
@@ -702,9 +706,22 @@ GAME._spawnDustRing = (t) => {
     G.particles.push({
       x: t.x + Math.cos(a) * 6, y: t.y + Math.sin(a) * 4,
       vx: Math.cos(a) * 60, vy: Math.sin(a) * 40,
-      life: 0.4, max: 0.4, size: 3, col: '200,160,110',
+      life: 0.4, max: 0.4, size: 3, col: '200,160,110', growAmt: 0.9,
     });
   }
+};
+GAME._spawnSparks = (t, n) => {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * U.TAU, spd = 130 + Math.random() * 110;
+    G.particles.push({
+      x: t.x, y: t.y, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd,
+      life: 0.14 + Math.random() * 0.1, max: 0.24,
+      col: Math.random() < 0.5 ? '255,240,180' : '255,170,70', kind: 'spark',
+    });
+  }
+};
+GAME._spawnImpactFlash = (x, y) => {
+  G.particles.push({ x, y, vx: 0, vy: 0, life: 0.22, max: 0.22, col: '255,255,255', kind: 'flash' });
 };
 GAME._particlesTick = (dt) => {
   for (let i = G.particles.length - 1; i >= 0; i--) {
@@ -771,6 +788,30 @@ GAME.draw = (ctx) => {
     U.text(ctx, 'P OR ESC TO RESUME', 256, 260, { scale: 1, color: '#aab', align: 'center' });
   }
   ctx.restore();
+
+  // arcade-cabinet CRT pass: scanlines + vignette, in fixed screen space so
+  // shake never distorts it — this is what makes it read as a real cabinet
+  GAME._ensureFX(ctx);
+  ctx.fillStyle = GAME._scanlinePattern; ctx.fillRect(0, 0, 512, 480);
+  ctx.drawImage(GAME._vignetteCanvas, 0, 0);
+};
+
+GAME._ensureFX = (ctx) => {
+  if (!GAME._scanlinePattern) {
+    const t = U.mkCanvas(1, 2);
+    const tg = t.getContext('2d');
+    tg.fillStyle = 'rgba(0,0,0,0.16)'; tg.fillRect(0, 1, 1, 1);
+    GAME._scanlinePattern = ctx.createPattern(t, 'repeat');
+  }
+  if (!GAME._vignetteCanvas) {
+    const c = U.mkCanvas(512, 480);
+    const g = c.getContext('2d');
+    const grad = g.createRadialGradient(256, 240, 140, 256, 240, 380);
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(1, 'rgba(0,0,0,0.42)');
+    g.fillStyle = grad; g.fillRect(0, 0, 512, 480);
+    GAME._vignetteCanvas = c;
+  }
 };
 
 GAME._drawRaceWorld = (ctx) => {
@@ -862,11 +903,26 @@ GAME._drawRaceWorld = (ctx) => {
     ctx.drawImage(fr, (t.x - w / 2) | 0, (dy - w / 2) | 0, w | 0, w | 0);
   }
 
-  // particles
+  // particles: soft puffs that grow as they fade (dust/mud/smoke), short bright
+  // streaks for sparks, and an expanding ring for hard-impact flashes
   for (const p of G.particles) {
     const a = p.life / p.max;
-    ctx.fillStyle = `rgba(${p.col},${(a * 0.8).toFixed(2)})`;
-    ctx.fillRect((p.x - p.size / 2) | 0, (p.y - p.size / 2) | 0, p.size | 0 || 1, p.size | 0 || 1);
+    if (p.kind === 'spark') {
+      ctx.strokeStyle = `rgba(${p.col},${a.toFixed(2)})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.x - p.vx * 0.025, p.y - p.vy * 0.025);
+      ctx.stroke();
+    } else if (p.kind === 'flash') {
+      ctx.strokeStyle = `rgba(${p.col},${(a * 0.7).toFixed(2)})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(p.x, p.y, (1 - a) * 16 + 2, 0, U.TAU); ctx.stroke();
+    } else {
+      const grow = 1 + (1 - a) * (p.growAmt || 0.5);
+      ctx.fillStyle = `rgba(${p.col},${(a * (p.alphaMax || 0.75)).toFixed(2)})`;
+      ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(0.6, p.size * grow / 2), 0, U.TAU); ctx.fill();
+    }
   }
   // floaters
   for (const f of G.floaters) {

@@ -297,58 +297,87 @@ TRK.render = (track, seed) => {
     if (ch === 'G') {
       R(x, y, 16, 16, '#565b63');
       for (let r = 0; r < 16; r += 4) R(x, y + r, 16, 1, '#43474e');
-      const dots = 5 + (rnd() * 4 | 0);
-      for (let i = 0; i < dots; i++) {
-        const px = x + (rnd() * 14 | 0), py = y + 1 + (rnd() * 13 | 0);
-        R(px, py, 2, 2, CROWD[rnd() * CROWD.length | 0]);
+      R(x, y, 16, 2, '#6a6f78'); // riser highlight along the top of each row
+      const people = 4 + (rnd() * 3 | 0);
+      for (let i = 0; i < people; i++) {
+        const px = x + (rnd() * 13 | 0), py = y + 1 + (rnd() * 11 | 0);
+        const col = CROWD[rnd() * CROWD.length | 0];
+        R(px, py + 1, 2, 2, col);                 // torso
+        R(px + (rnd() < 0.5 ? 0 : 1), py, 1, 1, SPR._mix(col, '#3a3226', 0.55)); // head
+        if (rnd() < 0.25) R(px - 1, py + 1, 1, 1, col); // raised arm
         if (rnd() < 0.35) track.crowdSpots.push([px, py]);
       }
     } else if (ch === '#') {
       const red = ((tx + ty) & 1) === 0;
       R(x, y, 16, 16, red ? '#c8342a' : '#e6e2d6');
-      R(x, y, 16, 2, red ? '#e05a50' : '#f8f6ee');
-      R(x, y + 14, 16, 2, red ? '#821a12' : '#a8a49a');
+      R(x, y, 16, 3, red ? '#f08078' : '#ffffff');   // barrel highlight
+      R(x, y, 3, 16, red ? '#e05a50' : '#f8f6ee');
+      R(x, y + 13, 16, 3, red ? '#7a170f' : '#9a968c'); // barrel shadow
+      R(x + 13, y, 3, 16, red ? '#8e1f17' : '#b8b4aa');
     } else if (ch === ',' || ch === 'T') {
       R(x, y, 16, 16, C.grass);
-      for (let i = 0; i < 5; i++)
-        R(x + (rnd() * 15 | 0), y + (rnd() * 15 | 0), 1, 1, rnd() < 0.5 ? C.gSpeck1 : C.gSpeck2);
+      for (let i = 0; i < 4; i++) { // clump shadows for depth
+        const cx = x + (rnd() * 13 | 0), cy = y + (rnd() * 13 | 0);
+        R(cx, cy, 3, 2, C.gSpeck2);
+      }
+      for (let i = 0; i < 9; i++) { // directional blade strokes
+        const bx = x + (rnd() * 15 | 0), by = y + (rnd() * 14 | 0);
+        R(bx, by, 1, 2, rnd() < 0.5 ? C.gSpeck1 : C.gSpeck2);
+      }
       if (ch === 'T') {
         for (const ox of [4, 12]) {
           const jx = x + ox + (rnd() * 3 | 0) - 1, jy = y + 8 + (rnd() * 3 | 0) - 1;
           g.fillStyle = '#1e1e24'; g.beginPath(); g.arc(jx, jy, 4, 0, U.TAU); g.fill();
           g.fillStyle = '#34343c'; g.beginPath(); g.arc(jx, jy, 1.8, 0, U.TAU); g.fill();
+          g.fillStyle = '#4a4a54'; g.fillRect(jx - 1, jy - 2, 1, 1); // tread glint
         }
       } else if (rnd() < 0.05) {
-        R(x + 4, y + 6, 7, 5, '#c8a860'); R(x + 4, y + 8, 7, 1, '#a8884a'); // hay bale
+        R(x + 4, y + 6, 7, 5, '#c8a860'); R(x + 4, y + 6, 7, 1, '#e0c888'); R(x + 4, y + 8, 7, 1, '#a8884a'); // hay bale
       } else if (rnd() < 0.04) {
-        R(x + 6, y + 8, 4, 5, '#f08020'); R(x + 6, y + 10, 4, 1, '#f8f0e0'); // cone
+        R(x + 6, y + 8, 4, 5, '#f08020'); R(x + 6, y + 8, 4, 1, '#ffb060'); R(x + 6, y + 10, 4, 1, '#f8f0e0'); // cone
       }
     } else if (ch === '.' || ch === 'S' || ch === 'J') {
-      const j = (rnd() * 12 | 0) - 6;
+      const j = (rnd() * 14 | 0) - 7;
       R(x, y, 16, 16, C.dirt(j));
-      for (let i = 0; i < 6; i++)
+      for (let i = 0; i < 8; i++)
         R(x + (rnd() * 15 | 0), y + (rnd() * 15 | 0), 1, 1, rnd() < 0.5 ? C.dSpeck1 : C.dSpeck2);
-      if (rnd() < 0.12) R(x + (rnd() * 13 | 0), y + (rnd() * 13 | 0), 2, 1, C.pebble);
-      if (ch === 'J') { // mogul bump
-        g.fillStyle = C.mogulLo; g.beginPath(); g.arc(x + 9, y + 9, 5, 0, U.TAU); g.fill();
-        g.fillStyle = C.mogulHi; g.beginPath(); g.arc(x + 7, y + 7, 4.5, 0, U.TAU); g.fill();
-        g.fillStyle = C.mogulMid; g.beginPath(); g.arc(x + 8, y + 8, 3, 0, U.TAU); g.fill();
+      if (rnd() < 0.16) { // small rock cluster with its own highlight/shadow
+        const rx = x + (rnd() * 12 | 0), ry = y + (rnd() * 12 | 0);
+        R(rx, ry, 2, 2, C.pebble); R(rx, ry, 1, 1, SPR._mix(C.pebble, '#ffffff', 0.4));
+      }
+      if (rnd() < 0.08) { // stray tire-mark smudge
+        g.strokeStyle = 'rgba(40,26,14,0.18)'; g.lineWidth = 2;
+        g.beginPath(); g.moveTo(x + (rnd() * 6 | 0), y); g.quadraticCurveTo(x + 8, y + 8, x + (rnd() * 6 | 0) + 8, y + 16); g.stroke();
+      }
+      if (ch === 'J') { // mogul bump with a highlight rim and shadow crescent
+        g.fillStyle = C.mogulLo; g.beginPath(); g.arc(x + 9, y + 9, 5.5, 0, U.TAU); g.fill();
+        g.fillStyle = C.mogulMid; g.beginPath(); g.arc(x + 8, y + 8, 4, 0, U.TAU); g.fill();
+        g.fillStyle = C.mogulHi; g.beginPath(); g.arc(x + 6.5, y + 6.5, 2.6, 0, U.TAU); g.fill();
+        g.fillStyle = 'rgba(255,255,255,0.55)'; g.beginPath(); g.arc(x + 5.5, y + 5.5, 1, 0, U.TAU); g.fill();
+        g.fillStyle = 'rgba(0,0,0,0.22)'; g.beginPath(); g.arc(x + 11, y + 11, 3.4, 0, U.TAU); g.fill();
       }
       if (ch === 'S') {
         for (let sy = 0; sy < 16; sy += 4) for (let sx = 0; sx < 16; sx += 4)
           R(x + sx, y + sy, 4, 4, (((sx + sy) / 4) & 1) ? '#e8e8e8' : '#181818');
       }
     } else if (ch === 'M') {
-      R(x, y, 16, 16, '#6b4426');
-      for (let i = 0; i < 4; i++)
-        R(x + (rnd() * 12 | 0), y + (rnd() * 12 | 0), 3 + (rnd() * 3 | 0), 2, '#55341c');
+      const j = (rnd() * 10 | 0) - 5;
+      R(x, y, 16, 16, `rgb(${107 + j},${68 + j},${38 + j})`);
+      for (let i = 0; i < 5; i++)
+        R(x + (rnd() * 12 | 0), y + (rnd() * 12 | 0), 3 + (rnd() * 3 | 0), 2, '#4a2c16');
       for (let i = 0; i < 3; i++)
         R(x + (rnd() * 14 | 0), y + (rnd() * 14 | 0), 2, 1, '#8a5c34');
+      g.strokeStyle = 'rgba(230,200,150,0.30)'; g.lineWidth = 1; // wet gloss streak
+      g.beginPath(); g.moveTo(x + 2, y + 3 + (rnd() * 3 | 0)); g.lineTo(x + 13, y + 1 + (rnd() * 3 | 0)); g.stroke();
+      if (rnd() < 0.2) { g.strokeStyle = 'rgba(0,0,0,0.2)'; g.beginPath(); g.arc(x + 4 + (rnd()*8|0), y + 4 + (rnd()*8|0), 2 + rnd()*2, 0, U.TAU); g.stroke(); } // splat ring
     } else if (ch === 'W') {
       R(x, y, 16, 16, C.waterBase);
-      for (let i = 0; i < 3; i++)
+      for (let i = 0; i < 4; i++)
         R(x + (rnd() * 11 | 0), y + (rnd() * 11 | 0), 4, 2, C.waterDark);
-      R(x + (rnd() * 12 | 0), y + (rnd() * 12 | 0), 3, 1, C.waterGlint);
+      g.strokeStyle = C.waterGlint; g.lineWidth = 1; g.globalAlpha = 0.8;
+      g.beginPath(); g.moveTo(x + 1, y + 4 + (rnd() * 6 | 0)); g.lineTo(x + 15, y + 2 + (rnd() * 6 | 0)); g.stroke();
+      g.globalAlpha = 1;
+      R(x + (rnd() * 12 | 0), y + (rnd() * 12 | 0), 2, 1, '#ffffff');
       if (track.theme === 'winter') { // crack lines in the ice
         g.strokeStyle = 'rgba(255,255,255,0.5)';
         g.beginPath(); g.moveTo(x + (rnd() * 8 | 0), y + (rnd() * 16 | 0));
@@ -383,6 +412,29 @@ TRK.render = (track, seed) => {
   g.strokeStyle = C.rut1; g.lineWidth = 12; g.stroke();
   g.strokeStyle = C.rut2; g.lineWidth = 4; g.stroke();
   g.restore();
+
+  // stadium roofline canopy along the very outer edge — angled fascia + support posts
+  const roofCol1 = '#2a2830', roofCol2 = '#38343e';
+  for (let tx = 0; tx < TRK.COLS; tx++) {
+    for (const wy of [0, TRK.ROWS - 1]) {
+      const x = tx * 16, y = wy * 16;
+      const flip = wy === 0;
+      R(x, flip ? y : y + 12, 16, 4, (tx & 1) ? roofCol1 : roofCol2);
+      g.fillStyle = '#e8c020';
+      g.beginPath();
+      if (flip) { g.moveTo(x, y + 4); g.lineTo(x + 8, y + 8); g.lineTo(x + 16, y + 4); g.lineTo(x + 16, y + 6); g.lineTo(x + 8, y + 10); g.lineTo(x, y + 6); }
+      else { g.moveTo(x, y + 12); g.lineTo(x + 8, y + 8); g.lineTo(x + 16, y + 12); g.lineTo(x + 16, y + 10); g.lineTo(x + 8, y + 6); g.lineTo(x, y + 10); }
+      g.closePath(); g.fill();
+      if (tx % 4 === 0) R(x + 7, flip ? y : y + 12, 2, 4, '#141218'); // support post
+    }
+  }
+  for (let ty = 0; ty < TRK.ROWS; ty++) {
+    for (const wx of [0, TRK.COLS - 1]) {
+      const x = wx * 16, y = ty * 16, flip = wx === 0;
+      R(flip ? x : x + 12, y, 4, 16, (ty & 1) ? roofCol1 : roofCol2);
+      if (ty % 4 === 0) R(flip ? x : x + 12, y + 7, 4, 2, '#141218');
+    }
+  }
 
   // billboards on top & bottom walls
   let bb = seed % TRK.BILLBOARDS.length;
