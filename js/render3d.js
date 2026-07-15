@@ -8,6 +8,36 @@ const R3 = {
   renderer: null, scene: null, camera: null, sunLight: null, nightLights: [],
   trackGroup: null, truckMeshes: [], truckKey: [], pickupMeshes: [],
   WORLD_W: 512, WORLD_H: 480, SCALE_Z: 0.55,
+  _heightFn: null,                // current track's terrain height sampler — world(x,z) -> y
+  TERRAIN_TRACK_AMP: 6,           // gentle undulation on the actual drivable surface
+  TERRAIN_OFFTRACK_AMP: 22,       // bigger rolling hills in the infield/outfield — purely visual
+};
+
+// deterministic string hash -> RNG seed, so each track's terrain is fixed (same track,
+// same hills every time) without needing a numeric seed threaded through from the caller
+R3._hashSeed = (str) => {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0;
+  return (h >>> 0) || 1;
+};
+
+// smooth rolling terrain via bilinear interpolation over a coarse random control grid —
+// gentle natural undulation, not spiky noise. amp is a Y-offset scale (world units).
+R3._mkHeightFn = (seedStr) => {
+  const rnd = U.rng(R3._hashSeed(seedStr));
+  const GX = 10, GZ = 10;
+  const pts = [];
+  for (let i = 0; i < GX * GZ; i++) pts.push(rnd() * 2 - 1);
+  return (wx, wz, amp) => {
+    const gx = U.clamp(wx / R3.WORLD_W * (GX - 1), 0, GX - 1.0001);
+    const gz = U.clamp(wz / R3.WORLD_H * (GZ - 1), 0, GZ - 1.0001);
+    const x0 = gx | 0, z0 = gz | 0, x1 = x0 + 1, z1 = z0 + 1;
+    const fx = gx - x0, fz = gz - z0;
+    const h00 = pts[z0 * GX + x0], h10 = pts[z0 * GX + x1];
+    const h01 = pts[z1 * GX + x0], h11 = pts[z1 * GX + x1];
+    const hx0 = h00 + (h10 - h00) * fx, hx1 = h01 + (h11 - h01) * fx;
+    return (hx0 + (hx1 - hx0) * fz) * amp;
+  };
 };
 
 R3.init = (canvas) => {
@@ -23,8 +53,10 @@ R3.init = (canvas) => {
 
   R3.scene = new THREE.Scene();
 
-  R3.camera = new THREE.PerspectiveCamera(36, R3.WORLD_W / R3.WORLD_H, 20, 3000);
-  R3.camera.position.set(R3.WORLD_W / 2, 520, R3.WORLD_H / 2 + 470);
+  // shallower, more raking angle than a near-top-down view — a steep angle flattens out
+  // terrain elevation almost entirely, and this is what actually sells rolling 3D ground
+  R3.camera = new THREE.PerspectiveCamera(38, R3.WORLD_W / R3.WORLD_H, 20, 3000);
+  R3.camera.position.set(R3.WORLD_W / 2, 380, R3.WORLD_H / 2 + 640);
   R3.camera.lookAt(R3.WORLD_W / 2, 0, R3.WORLD_H / 2 - 30);
 
   R3.amb = new THREE.AmbientLight(0xffffff, 0.62);
@@ -69,40 +101,57 @@ R3._disposeGroup = (grp) => {
 };
 
 // ---------- track: reuses the existing fully-painted 2D canvas as the ground texture,
-// then layers real 3D geometry on top for the pieces that need actual depth ----------
+// displaced into real rolling terrain, then layers 3D geometry on top for the barrier/moguls ----------
 R3.buildTrack = (track) => {
   if (!R3.ready) return;
   if (R3.trackGroup) { R3.scene.remove(R3.trackGroup); R3._disposeGroup(R3.trackGroup); }
   const grp = new THREE.Group();
 
+  const DRIVABLE = { '.': 1, 'S': 1, 'J': 1, 'M': 1, 'W': 1 };
+  const isRailAt = (nx, ny) => nx >= 0 && ny >= 0 && nx < TRK.COLS && ny < TRK.ROWS &&
+    !DRIVABLE[track.grid[ny][nx]] && track.grid[ny][nx] !== '#' && track.grid[ny][nx] !== 'G';
+
+  // terrain: a real height-displaced mesh, not a flat plane with a texture on it — gentle
+  // rolling undulation on the drivable surface, bigger dramatic hills off to the sides
+  const rawHeight = R3._mkHeightFn(track.name);
+  const heightAt = (wx, wz) => {
+    const tx = U.clamp(Math.floor(wx / 16), 0, TRK.COLS - 1), tz = U.clamp(Math.floor(wz / 16), 0, TRK.ROWS - 1);
+    const amp = DRIVABLE[track.grid[tz][tx]] ? R3.TERRAIN_TRACK_AMP : R3.TERRAIN_OFFTRACK_AMP;
+    return rawHeight(wx, wz, amp);
+  };
+  R3._heightFn = heightAt;
+
   const tex = new THREE.CanvasTexture(track.canvas);
   tex.needsUpdate = true;
   if (THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
   const groundMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95 });
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(R3.WORLD_W, R3.WORLD_H), groundMat);
+  const groundGeo = new THREE.PlaneGeometry(R3.WORLD_W, R3.WORLD_H, 48, 45);
+  const pos = groundGeo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const wx = pos.getX(i) + R3.WORLD_W / 2, wz = R3.WORLD_H / 2 - pos.getY(i);
+    pos.setZ(i, heightAt(wx, wz));
+  }
+  groundGeo.computeVertexNormals();
+  const ground = new THREE.Mesh(groundGeo, groundMat);
   ground.userData.ownGeo = true; ground.userData.ownMat = true;
   ground.rotation.x = -Math.PI / 2;
   ground.position.set(R3.WORLD_W / 2, 0, R3.WORLD_H / 2);
   ground.receiveShadow = true;
   grp.add(ground);
 
-  const DRIVABLE = { '.': 1, 'S': 1, 'J': 1, 'M': 1, 'W': 1 };
-  const isRailAt = (nx, ny) => nx >= 0 && ny >= 0 && nx < TRK.COLS && ny < TRK.ROWS &&
-    !DRIVABLE[track.grid[ny][nx]] && track.grid[ny][nx] !== '#' && track.grid[ny][nx] !== 'G';
-
   for (let ty = 0; ty < TRK.ROWS; ty++) for (let tx = 0; tx < TRK.COLS; tx++) {
     const ch = track.grid[ty][tx];
     if (!DRIVABLE[ch]) continue;
-    const x = tx * 16 + 8, z = ty * 16 + 8;
+    const x = tx * 16 + 8, z = ty * 16 + 8, h = heightAt(x, z);
     const mat = ((tx + ty) & 1) ? R3._railMatWhite : R3._railMatRed;
-    if (isRailAt(tx, ty - 1)) { const m = new THREE.Mesh(R3._railBoxH, mat); m.position.set(x, 3.5, z - 8); m.castShadow = true; m.receiveShadow = true; grp.add(m); }
-    if (isRailAt(tx, ty + 1)) { const m = new THREE.Mesh(R3._railBoxH, mat); m.position.set(x, 3.5, z + 8); m.castShadow = true; m.receiveShadow = true; grp.add(m); }
-    if (isRailAt(tx - 1, ty)) { const m = new THREE.Mesh(R3._railBoxV, mat); m.position.set(x - 8, 3.5, z); m.castShadow = true; m.receiveShadow = true; grp.add(m); }
-    if (isRailAt(tx + 1, ty)) { const m = new THREE.Mesh(R3._railBoxV, mat); m.position.set(x + 8, 3.5, z); m.castShadow = true; m.receiveShadow = true; grp.add(m); }
+    if (isRailAt(tx, ty - 1)) { const m = new THREE.Mesh(R3._railBoxH, mat); m.position.set(x, 3.5 + h, z - 8); m.castShadow = true; m.receiveShadow = true; grp.add(m); }
+    if (isRailAt(tx, ty + 1)) { const m = new THREE.Mesh(R3._railBoxH, mat); m.position.set(x, 3.5 + h, z + 8); m.castShadow = true; m.receiveShadow = true; grp.add(m); }
+    if (isRailAt(tx - 1, ty)) { const m = new THREE.Mesh(R3._railBoxV, mat); m.position.set(x - 8, 3.5 + h, z); m.castShadow = true; m.receiveShadow = true; grp.add(m); }
+    if (isRailAt(tx + 1, ty)) { const m = new THREE.Mesh(R3._railBoxV, mat); m.position.set(x + 8, 3.5 + h, z); m.castShadow = true; m.receiveShadow = true; grp.add(m); }
     if (ch === 'J') {
       const mound = new THREE.Mesh(new THREE.SphereGeometry(9, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), R3._mogulMat);
       mound.userData.ownGeo = true;
-      mound.position.set(x, 0, z);
+      mound.position.set(x, h, z);
       mound.scale.set(1, 0.5, 1);
       mound.castShadow = true; mound.receiveShadow = true;
       grp.add(mound);
@@ -159,14 +208,17 @@ R3.syncPickups = (pickups) => {
     if (!m) continue;
     const p = pickups[i];
     m.visible = p.alive;
-    m.position.y = 8 + Math.sin(p.bob) * 1.6;
+    const h = R3._heightFn ? R3._heightFn(p.x, p.y) : 0;
+    m.position.y = 8 + h + Math.sin(p.bob) * 1.6;
     m.rotation.y = p.bob;
   }
 };
 
 // ---------- trucks: procedurally-built low-poly 3D models, not sprites ----------
-R3.TRUCK_SCALE = 2.0; // real arcade trucks are chunky relative to the track — the physics
-                       // collision radius stays untouched, this is purely a visual bump
+// Real arcade trucks are small vehicles on a big sprawling track, not dominant against it —
+// this is a modest bump over pure physics-accurate size, not the arcade-toy scale tried
+// earlier. Physics collision radius stays untouched either way.
+R3.TRUCK_SCALE = 1.15;
 
 R3.buildTruckMesh = (colorIdx, chassisIdx) => {
   const pal = SPR.PALETTES[colorIdx];
@@ -272,7 +324,8 @@ R3.syncTrucks = (trucks, frame) => {
     if (hideBlink) continue;
     const spd = Math.hypot(t.vx, t.vy);
     const bob = t.z > 0 ? 0 : Math.sin(t.bobPhase) * (spd / 240) * 1.1;
-    m.position.set(t.x, t.z * R3.SCALE_Z + bob, t.y);
+    const h = R3._heightFn ? R3._heightFn(t.x, t.y) : 0;
+    m.position.set(t.x, t.z * R3.SCALE_Z + bob + h, t.y);
     m.rotation.y = Math.PI / 2 - t.heading;
     m.rotation.x = t.z > 30 ? -0.22 : 0;
   }

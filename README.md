@@ -72,18 +72,23 @@ you, it just stops gripping.
 
 ## Graphics
 
-The race world is real 3D, rendered with Three.js/WebGL: a directional sun
-light with cast shadows, a candy-striped barrier rail that's actual raised
-geometry hugging every curve, moguls as real raised mounds you can see cast a
-shadow, and chunky low-poly toy-truck models (body, cab, roll bar, chrome
-bumpers, knobby tires with lug-nut hubs, a chassis-specific spoiler/bull-bar/
-snorkel) sized like the real arcade's trucks — big enough to dominate the
-lane, not toy-sized against the track — that rotate and pitch in full 3D
-instead of swapping between flat sprite frames. The ground itself reuses the
-game's richly painted 2D dirt/mud/grass/
-water texture as a 3D-mapped surface, so none of that detail was lost moving
-into 3D. Night tracks get real point lights at the four tower positions
-instead of a flat gradient hack.
+The race world is real 3D, rendered with Three.js/WebGL. The ground isn't a
+flat plane with a texture on it — it's a height-displaced mesh with genuine
+rolling terrain: gentle undulation on the actual drivable surface, bigger
+dramatic hills across the infield and outfield, all following the same
+per-track deterministic height map so barriers, moguls, pickups, and trucks
+all sit correctly on the terrain instead of floating over it. A directional
+sun casts real shadows, the candy-striped barrier rail is actual raised
+geometry hugging every curve, and moguls are raised mounds you can see cast
+a shadow. Trucks are small low-poly toy-truck models (body, cab, roll bar,
+chrome bumpers, knobby tires with lug-nut hubs, a chassis-specific
+spoiler/bull-bar/snorkel) — sized like real vehicles on a big sprawling
+track, not oversized toys — that rotate and pitch in full 3D instead of
+swapping between flat sprite frames. The ground texture itself reuses the
+game's richly painted 2D dirt/mud/grass/water art, now mapped onto that 3D
+terrain, so none of that detail was lost moving into 3D. Night tracks get
+real point lights at the four tower positions instead of a flat gradient
+hack.
 
 The 2D canvas still handles every menu, the HUD, and lightweight particle FX
 (dust, sparks, impact flashes) as a transparent overlay on top of the WebGL
