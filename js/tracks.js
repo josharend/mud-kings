@@ -218,6 +218,9 @@ TRK.THEMES = {
     mogulHi: '#dca86b', mogulLo: '#8a5a33', mogulMid: '#c89058',
     rut1: 'rgba(96,58,30,0.20)', rut2: 'rgba(70,42,22,0.20)',
     glintCol: 'rgba(180,215,245,0.7)',
+    dirtBase: '#b8824e', dirtDark: '#4a2a12', dirtLight: '#e0b684',
+    mudBase: '#5c3a20', mudDark: '#281608', mudLight: '#6e4a28',
+    railA: '#c8342a', railADk: '#8e1f17', railB: '#e6e2d6', railBDk: '#b8b4aa',
   },
   winter: {
     dirt: (j) => `rgb(${218 + j},${224 + j},${231 + j})`,
@@ -227,6 +230,9 @@ TRK.THEMES = {
     mogulHi: '#f2f7fb', mogulLo: '#93a4b4', mogulMid: '#ccdae4',
     rut1: 'rgba(120,95,70,0.22)', rut2: 'rgba(96,74,52,0.22)',
     glintCol: 'rgba(255,255,255,0.8)',
+    dirtBase: '#d8dee4', dirtDark: '#a8b4c0', dirtLight: '#f4f8fc',
+    mudBase: '#8a9aa8', mudDark: '#5a6874', mudLight: '#c8d4de',
+    railA: '#c8342a', railADk: '#8e1f17', railB: '#e6e2d6', railBDk: '#b8b4aa',
   },
 };
 TRK.THEMES.night = TRK.THEMES.day; // night = day colors + darkening pass
@@ -283,6 +289,52 @@ TRK.tileAt = (track, px, py) => {
 TRK.solidAt = (track, px, py) => !!TRK.SOLID[TRK.tileAt(track, px, py)];
 
 // ---------- rendering ----------
+const DRIVABLE = { '.': 1, 'S': 1, 'J': 1, 'M': 1, 'W': 1 };
+
+// builds a solid white-on-transparent mask of every tile matching `pred`, then blurs it —
+// this is what turns the blocky tile grid into a smooth organic track outline: no polygon
+// math needed, the browser's own blur rounds every inside/outside corner for free.
+const _tileMask = (track, pred, blurPx) => {
+  const m = U.mkCanvas(TRK.W, TRK.H);
+  const mg = m.getContext('2d');
+  mg.fillStyle = '#fff';
+  for (let ty = 0; ty < TRK.ROWS; ty++) for (let tx = 0; tx < TRK.COLS; tx++) {
+    if (pred(track.grid[ty][tx])) mg.fillRect(tx * 16, ty * 16, 16, 16);
+  }
+  if (!blurPx) return m;
+  const b = U.mkCanvas(TRK.W, TRK.H);
+  const bg = b.getContext('2d');
+  bg.filter = `blur(${blurPx}px)`;
+  bg.drawImage(m, 0, 0);
+  bg.filter = 'none';
+  return b;
+};
+
+// paints a continuous painterly surface: a base tone plus hundreds of soft overlapping
+// tinted blobs at two scales, then fine speckle grain on top — reads as real terrain
+// instead of a repeated tile pattern.
+const _paintSurface = (rnd, base, dark, light, blobs) => {
+  const f = U.mkCanvas(TRK.W, TRK.H);
+  const fg = f.getContext('2d');
+  fg.fillStyle = base; fg.fillRect(0, 0, TRK.W, TRK.H);
+  const [dr, dg, db] = SPR._hex2rgb(dark), [lr, lg, lb] = SPR._hex2rgb(light);
+  for (let i = 0; i < blobs; i++) {
+    const x = rnd() * TRK.W, y = rnd() * TRK.H, r = 7 + rnd() * 16;
+    fg.fillStyle = `rgba(${dr},${dg},${db},${(0.05 + rnd() * 0.09).toFixed(2)})`;
+    fg.beginPath(); fg.arc(x, y, r, 0, U.TAU); fg.fill();
+  }
+  for (let i = 0; i < blobs * 0.6; i++) {
+    const x = rnd() * TRK.W, y = rnd() * TRK.H, r = 4 + rnd() * 9;
+    fg.fillStyle = `rgba(${lr},${lg},${lb},${(0.05 + rnd() * 0.08).toFixed(2)})`;
+    fg.beginPath(); fg.arc(x, y, r, 0, U.TAU); fg.fill();
+  }
+  for (let i = 0; i < 2200; i++) {
+    fg.fillStyle = rnd() < 0.5 ? `rgba(${dr},${dg},${db},0.14)` : `rgba(${lr},${lg},${lb},0.14)`;
+    fg.fillRect((rnd() * TRK.W) | 0, (rnd() * TRK.H) | 0, 1, 1);
+  }
+  return f;
+};
+
 TRK.render = (track, seed) => {
   const c = U.mkCanvas(TRK.W, TRK.H);
   const g = c.getContext('2d');
@@ -291,94 +343,81 @@ TRK.render = (track, seed) => {
   const CROWD = ['#e04040', '#e8c040', '#40a0e0', '#40c080', '#e080c0', '#f0ece0', '#e08030', '#b0b8f0'];
   const C = TRK.THEMES[track.theme] || TRK.THEMES.day;
 
+  // ---- stands + outer stadium wall (unchanged tile-by-tile — these frame the arena) ----
   for (let ty = 0; ty < TRK.ROWS; ty++) for (let tx = 0; tx < TRK.COLS; tx++) {
     const ch = track.grid[ty][tx];
     const x = tx * 16, y = ty * 16;
     if (ch === 'G') {
       R(x, y, 16, 16, '#565b63');
       for (let r = 0; r < 16; r += 4) R(x, y + r, 16, 1, '#43474e');
-      R(x, y, 16, 2, '#6a6f78'); // riser highlight along the top of each row
+      R(x, y, 16, 2, '#6a6f78');
       const people = 4 + (rnd() * 3 | 0);
       for (let i = 0; i < people; i++) {
         const px = x + (rnd() * 13 | 0), py = y + 1 + (rnd() * 11 | 0);
         const col = CROWD[rnd() * CROWD.length | 0];
-        R(px, py + 1, 2, 2, col);                 // torso
-        R(px + (rnd() < 0.5 ? 0 : 1), py, 1, 1, SPR._mix(col, '#3a3226', 0.55)); // head
-        if (rnd() < 0.25) R(px - 1, py + 1, 1, 1, col); // raised arm
+        R(px, py + 1, 2, 2, col);
+        R(px + (rnd() < 0.5 ? 0 : 1), py, 1, 1, SPR._mix(col, '#3a3226', 0.55));
+        if (rnd() < 0.25) R(px - 1, py + 1, 1, 1, col);
         if (rnd() < 0.35) track.crowdSpots.push([px, py]);
       }
     } else if (ch === '#') {
       const red = ((tx + ty) & 1) === 0;
       R(x, y, 16, 16, red ? '#c8342a' : '#e6e2d6');
-      R(x, y, 16, 3, red ? '#f08078' : '#ffffff');   // barrel highlight
+      R(x, y, 16, 3, red ? '#f08078' : '#ffffff');
       R(x, y, 3, 16, red ? '#e05a50' : '#f8f6ee');
-      R(x, y + 13, 16, 3, red ? '#7a170f' : '#9a968c'); // barrel shadow
+      R(x, y + 13, 16, 3, red ? '#7a170f' : '#9a968c');
       R(x + 13, y, 3, 16, red ? '#8e1f17' : '#b8b4aa');
     } else if (ch === ',' || ch === 'T') {
       R(x, y, 16, 16, C.grass);
-      for (let i = 0; i < 4; i++) { // clump shadows for depth
-        const cx = x + (rnd() * 13 | 0), cy = y + (rnd() * 13 | 0);
-        R(cx, cy, 3, 2, C.gSpeck2);
-      }
-      for (let i = 0; i < 9; i++) { // directional blade strokes
-        const bx = x + (rnd() * 15 | 0), by = y + (rnd() * 14 | 0);
-        R(bx, by, 1, 2, rnd() < 0.5 ? C.gSpeck1 : C.gSpeck2);
-      }
+      for (let i = 0; i < 4; i++) { const cx = x + (rnd() * 13 | 0), cy = y + (rnd() * 13 | 0); R(cx, cy, 3, 2, C.gSpeck2); }
+      for (let i = 0; i < 9; i++) { const bx = x + (rnd() * 15 | 0), by = y + (rnd() * 14 | 0); R(bx, by, 1, 2, rnd() < 0.5 ? C.gSpeck1 : C.gSpeck2); }
       if (ch === 'T') {
         for (const ox of [4, 12]) {
           const jx = x + ox + (rnd() * 3 | 0) - 1, jy = y + 8 + (rnd() * 3 | 0) - 1;
           g.fillStyle = '#1e1e24'; g.beginPath(); g.arc(jx, jy, 4, 0, U.TAU); g.fill();
           g.fillStyle = '#34343c'; g.beginPath(); g.arc(jx, jy, 1.8, 0, U.TAU); g.fill();
-          g.fillStyle = '#4a4a54'; g.fillRect(jx - 1, jy - 2, 1, 1); // tread glint
+          g.fillStyle = '#4a4a54'; g.fillRect(jx - 1, jy - 2, 1, 1);
         }
       } else if (rnd() < 0.05) {
-        R(x + 4, y + 6, 7, 5, '#c8a860'); R(x + 4, y + 6, 7, 1, '#e0c888'); R(x + 4, y + 8, 7, 1, '#a8884a'); // hay bale
+        R(x + 4, y + 6, 7, 5, '#c8a860'); R(x + 4, y + 6, 7, 1, '#e0c888'); R(x + 4, y + 8, 7, 1, '#a8884a');
       } else if (rnd() < 0.04) {
-        R(x + 6, y + 8, 4, 5, '#f08020'); R(x + 6, y + 8, 4, 1, '#ffb060'); R(x + 6, y + 10, 4, 1, '#f8f0e0'); // cone
+        R(x + 6, y + 8, 4, 5, '#f08020'); R(x + 6, y + 8, 4, 1, '#ffb060'); R(x + 6, y + 10, 4, 1, '#f8f0e0');
       }
-    } else if (ch === '.' || ch === 'S' || ch === 'J') {
-      const j = (rnd() * 14 | 0) - 7;
-      R(x, y, 16, 16, C.dirt(j));
-      for (let i = 0; i < 8; i++)
-        R(x + (rnd() * 15 | 0), y + (rnd() * 15 | 0), 1, 1, rnd() < 0.5 ? C.dSpeck1 : C.dSpeck2);
-      if (rnd() < 0.16) { // small rock cluster with its own highlight/shadow
-        const rx = x + (rnd() * 12 | 0), ry = y + (rnd() * 12 | 0);
-        R(rx, ry, 2, 2, C.pebble); R(rx, ry, 1, 1, SPR._mix(C.pebble, '#ffffff', 0.4));
-      }
-      if (rnd() < 0.08) { // stray tire-mark smudge
-        g.strokeStyle = 'rgba(40,26,14,0.18)'; g.lineWidth = 2;
-        g.beginPath(); g.moveTo(x + (rnd() * 6 | 0), y); g.quadraticCurveTo(x + 8, y + 8, x + (rnd() * 6 | 0) + 8, y + 16); g.stroke();
-      }
-      if (ch === 'J') { // mogul bump with a highlight rim and shadow crescent
-        g.fillStyle = C.mogulLo; g.beginPath(); g.arc(x + 9, y + 9, 5.5, 0, U.TAU); g.fill();
-        g.fillStyle = C.mogulMid; g.beginPath(); g.arc(x + 8, y + 8, 4, 0, U.TAU); g.fill();
-        g.fillStyle = C.mogulHi; g.beginPath(); g.arc(x + 6.5, y + 6.5, 2.6, 0, U.TAU); g.fill();
-        g.fillStyle = 'rgba(255,255,255,0.55)'; g.beginPath(); g.arc(x + 5.5, y + 5.5, 1, 0, U.TAU); g.fill();
-        g.fillStyle = 'rgba(0,0,0,0.22)'; g.beginPath(); g.arc(x + 11, y + 11, 3.4, 0, U.TAU); g.fill();
-      }
-      if (ch === 'S') {
-        for (let sy = 0; sy < 16; sy += 4) for (let sx = 0; sx < 16; sx += 4)
-          R(x + sx, y + sy, 4, 4, (((sx + sy) / 4) & 1) ? '#e8e8e8' : '#181818');
-      }
-    } else if (ch === 'M') {
-      const j = (rnd() * 10 | 0) - 5;
-      R(x, y, 16, 16, `rgb(${107 + j},${68 + j},${38 + j})`);
-      for (let i = 0; i < 5; i++)
-        R(x + (rnd() * 12 | 0), y + (rnd() * 12 | 0), 3 + (rnd() * 3 | 0), 2, '#4a2c16');
-      for (let i = 0; i < 3; i++)
-        R(x + (rnd() * 14 | 0), y + (rnd() * 14 | 0), 2, 1, '#8a5c34');
-      g.strokeStyle = 'rgba(230,200,150,0.30)'; g.lineWidth = 1; // wet gloss streak
-      g.beginPath(); g.moveTo(x + 2, y + 3 + (rnd() * 3 | 0)); g.lineTo(x + 13, y + 1 + (rnd() * 3 | 0)); g.stroke();
-      if (rnd() < 0.2) { g.strokeStyle = 'rgba(0,0,0,0.2)'; g.beginPath(); g.arc(x + 4 + (rnd()*8|0), y + 4 + (rnd()*8|0), 2 + rnd()*2, 0, U.TAU); g.stroke(); } // splat ring
-    } else if (ch === 'W') {
-      R(x, y, 16, 16, C.waterBase);
-      for (let i = 0; i < 4; i++)
-        R(x + (rnd() * 11 | 0), y + (rnd() * 11 | 0), 4, 2, C.waterDark);
-      g.strokeStyle = C.waterGlint; g.lineWidth = 1; g.globalAlpha = 0.8;
+    }
+  }
+
+  // ---- continuous organic track surface: soft-edged dirt, then mud/water blended on top ----
+  const dirtMask = _tileMask(track, ch => DRIVABLE[ch], 3);
+  const dirtFill = _paintSurface(rnd, C.dirtBase, C.dirtDark, C.dirtLight, 260);
+  dirtFill.getContext('2d').globalCompositeOperation = 'destination-in';
+  dirtFill.getContext('2d').drawImage(dirtMask, 0, 0);
+  g.drawImage(dirtFill, 0, 0);
+
+  const hasMud = track.grid.some(row => row.includes('M'));
+  if (hasMud) {
+    const mudMask = _tileMask(track, ch => ch === 'M', 2.5);
+    const mudFill = _paintSurface(rnd, C.mudBase, C.mudDark, C.mudLight, 90);
+    mudFill.getContext('2d').globalCompositeOperation = 'destination-in';
+    mudFill.getContext('2d').drawImage(mudMask, 0, 0);
+    g.drawImage(mudFill, 0, 0);
+  }
+  const hasWater = track.grid.some(row => row.includes('W'));
+  if (hasWater) {
+    const waterMask = _tileMask(track, ch => ch === 'W', 2.5);
+    const waterFill = U.mkCanvas(TRK.W, TRK.H);
+    const wg = waterFill.getContext('2d');
+    wg.fillStyle = C.waterBase; wg.fillRect(0, 0, TRK.W, TRK.H);
+    for (let i = 0; i < 60; i++) { wg.fillStyle = C.waterDark; wg.fillRect(rnd() * TRK.W | 0, rnd() * TRK.H | 0, 5, 2); }
+    wg.globalCompositeOperation = 'destination-in';
+    wg.drawImage(waterMask, 0, 0);
+    g.drawImage(waterFill, 0, 0);
+    for (let ty = 0; ty < TRK.ROWS; ty++) for (let tx = 0; tx < TRK.COLS; tx++) {
+      if (track.grid[ty][tx] !== 'W') continue;
+      const x = tx * 16, y = ty * 16;
+      g.strokeStyle = C.waterGlint; g.lineWidth = 1; g.globalAlpha = 0.75;
       g.beginPath(); g.moveTo(x + 1, y + 4 + (rnd() * 6 | 0)); g.lineTo(x + 15, y + 2 + (rnd() * 6 | 0)); g.stroke();
       g.globalAlpha = 1;
-      R(x + (rnd() * 12 | 0), y + (rnd() * 12 | 0), 2, 1, '#ffffff');
-      if (track.theme === 'winter') { // crack lines in the ice
+      if (track.theme === 'winter') {
         g.strokeStyle = 'rgba(255,255,255,0.5)';
         g.beginPath(); g.moveTo(x + (rnd() * 8 | 0), y + (rnd() * 16 | 0));
         g.lineTo(x + 8 + (rnd() * 8 | 0), y + (rnd() * 16 | 0)); g.stroke();
@@ -387,15 +426,44 @@ TRK.render = (track, seed) => {
     }
   }
 
-  // soft rims where mud/water meets dirt
-  for (let ty = 1; ty < TRK.ROWS - 1; ty++) for (let tx = 1; tx < TRK.COLS - 1; tx++) {
+  // ---- discrete surface objects on top: pebbles, tire marks, moguls, start checker ----
+  for (let ty = 0; ty < TRK.ROWS; ty++) for (let tx = 0; tx < TRK.COLS; tx++) {
     const ch = track.grid[ty][tx];
-    if (ch !== 'M' && ch !== 'W') continue;
-    const rim = ch === 'M' ? '#4a2c16' : C.waterRim;
-    if (track.grid[ty - 1][tx] === '.') R(tx * 16, ty * 16, 16, 1, rim);
-    if (track.grid[ty + 1][tx] === '.') R(tx * 16, ty * 16 + 15, 16, 1, rim);
-    if (track.grid[ty][tx - 1] === '.') R(tx * 16, ty * 16, 1, 16, rim);
-    if (track.grid[ty][tx + 1] === '.') R(tx * 16 + 1 * 15, ty * 16, 1, 16, rim);
+    const x = tx * 16, y = ty * 16;
+    if (ch === '.' || ch === 'S' || ch === 'J') {
+      if (rnd() < 0.14) { const rx = x + (rnd() * 12 | 0), ry = y + (rnd() * 12 | 0); R(rx, ry, 2, 2, C.pebble); R(rx, ry, 1, 1, SPR._mix(C.pebble, '#ffffff', 0.4)); }
+      if (rnd() < 0.07) {
+        g.strokeStyle = 'rgba(40,26,14,0.16)'; g.lineWidth = 2;
+        g.beginPath(); g.moveTo(x + (rnd() * 6 | 0), y); g.quadraticCurveTo(x + 8, y + 8, x + (rnd() * 6 | 0) + 8, y + 16); g.stroke();
+      }
+      if (ch === 'J') { // big raised mound — bigger and more dramatic than a simple bump
+        g.fillStyle = 'rgba(0,0,0,0.25)'; g.beginPath(); g.ellipse(x + 9, y + 11, 7, 4, 0, 0, U.TAU); g.fill();
+        g.fillStyle = C.mogulLo; g.beginPath(); g.arc(x + 8, y + 9, 6.5, 0, U.TAU); g.fill();
+        g.fillStyle = C.mogulMid; g.beginPath(); g.arc(x + 7.5, y + 8, 5, 0, U.TAU); g.fill();
+        g.fillStyle = C.mogulHi; g.beginPath(); g.arc(x + 6, y + 6.5, 3.2, 0, U.TAU); g.fill();
+        g.fillStyle = 'rgba(255,255,255,0.6)'; g.beginPath(); g.arc(x + 4.8, y + 5.3, 1.2, 0, U.TAU); g.fill();
+      }
+      if (ch === 'S') {
+        for (let sy = 0; sy < 16; sy += 4) for (let sx = 0; sx < 16; sx += 4)
+          R(x + sx, y + sy, 4, 4, (((sx + sy) / 4) & 1) ? '#e8e8e8' : '#181818');
+      }
+    } else if (ch === 'M') {
+      g.strokeStyle = 'rgba(230,200,150,0.28)'; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(x + 2, y + 3 + (rnd() * 3 | 0)); g.lineTo(x + 13, y + 1 + (rnd() * 3 | 0)); g.stroke();
+      if (rnd() < 0.2) { g.strokeStyle = 'rgba(0,0,0,0.2)'; g.beginPath(); g.arc(x + 4 + (rnd() * 8 | 0), y + 4 + (rnd() * 8 | 0), 2 + rnd() * 2, 0, U.TAU); g.stroke(); }
+    }
+  }
+
+  // ---- track-edge candy-striped tube rail — follows the actual carved corridor, not a fixed rectangle ----
+  for (let ty = 0; ty < TRK.ROWS; ty++) for (let tx = 0; tx < TRK.COLS; tx++) {
+    if (!DRIVABLE[track.grid[ty][tx]]) continue;
+    const x = tx * 16, y = ty * 16;
+    const stripe = ((tx + ty) & 1) ? C.railB : C.railA, stripeDk = ((tx + ty) & 1) ? C.railBDk : C.railADk;
+    const isRail = (nx, ny) => nx >= 0 && ny >= 0 && nx < TRK.COLS && ny < TRK.ROWS && !DRIVABLE[track.grid[ny][nx]] && track.grid[ny][nx] !== '#' && track.grid[ny][nx] !== 'G';
+    if (isRail(tx, ty - 1)) { R(x, y, 16, 4, stripe); R(x, y, 16, 1, 'rgba(255,255,255,0.55)'); R(x, y + 3, 16, 1, stripeDk); }
+    if (isRail(tx, ty + 1)) { R(x, y + 12, 16, 4, stripe); R(x, y + 12, 16, 1, 'rgba(255,255,255,0.55)'); R(x, y + 15, 16, 1, stripeDk); }
+    if (isRail(tx - 1, ty)) { R(x, y, 4, 16, stripe); R(x, y, 1, 16, 'rgba(255,255,255,0.55)'); R(x + 3, y, 1, 16, stripeDk); }
+    if (isRail(tx + 1, ty)) { R(x + 12, y, 4, 16, stripe); R(x + 12, y, 1, 16, 'rgba(255,255,255,0.55)'); R(x + 15, y, 1, 16, stripeDk); }
   }
 
   // tire ruts along the racing line

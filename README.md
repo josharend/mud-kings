@@ -69,6 +69,12 @@ you, it just stops gripping.
 
 ## Graphics
 
+The track surface is one continuous painted dirt shape, not a grid of repeated
+tiles — mud and water blend into it with soft edges, and a candy-striped tube
+rail hugs the actual carved corridor around every curve, just like the real
+cabinet's track art. Moguls are big raised mounds with a real highlight and
+drop-shadow, not flat bumps.
+
 Every truck is prerendered pixel art with 7-tone rounded-metal shading, chrome
 bumpers and roll bars, knobby tread with lug-nut hubs, side mirrors, a light
 bar, and a sponsor number decal on the tailgate — each chassis adds its own
