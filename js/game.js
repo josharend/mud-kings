@@ -142,6 +142,12 @@ GAME.setupRace = (attract) => {
   G.leaderFinalLap = false;
   G.leadTruck = null;
   G.leadCooldown = 0;
+
+  if (typeof R3 !== 'undefined' && R3.ready) {
+    R3.buildTrack(track);
+    R3.buildTrucks(G.trucks);
+    R3.buildPickups(G.pickups);
+  }
 };
 
 GAME.startRace = () => {
@@ -815,6 +821,48 @@ GAME._ensureFX = (ctx) => {
 };
 
 GAME._drawRaceWorld = (ctx) => {
+  if (typeof R3 !== 'undefined' && R3.ready) GAME._drawRaceWorld3D(ctx);
+  else GAME._drawRaceWorld2D(ctx);
+};
+
+// primary path: Three.js renders the actual scene, the 2D canvas becomes a thin
+// transparent overlay for particles/floaters only (cheap, and they read fine as flat FX)
+GAME._drawRaceWorld3D = (ctx) => {
+  R3.syncTrucks(G.trucks, G.frame);
+  R3.syncPickups(G.pickups);
+  R3.setNight(G.track.theme === 'night');
+  R3.render();
+  ctx.clearRect(0, 0, 512, 480);
+  GAME._drawOverlayFX(ctx);
+};
+
+GAME._drawOverlayFX = (ctx) => {
+  for (const p of G.particles) {
+    const a = p.life / p.max;
+    if (p.kind === 'spark') {
+      ctx.strokeStyle = `rgba(${p.col},${a.toFixed(2)})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.x - p.vx * 0.025, p.y - p.vy * 0.025);
+      ctx.stroke();
+    } else if (p.kind === 'flash') {
+      ctx.strokeStyle = `rgba(${p.col},${(a * 0.7).toFixed(2)})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(p.x, p.y, (1 - a) * 16 + 2, 0, U.TAU); ctx.stroke();
+    } else {
+      const grow = 1 + (1 - a) * (p.growAmt || 0.5);
+      ctx.fillStyle = `rgba(${p.col},${(a * (p.alphaMax || 0.75)).toFixed(2)})`;
+      ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(0.6, p.size * grow / 2), 0, U.TAU); ctx.fill();
+    }
+  }
+  for (const f of G.floaters) {
+    U.text(ctx, f.txt, f.x | 0, f.y | 0, { align: 'center', color: f.col, outline: '#181008', alpha: Math.min(1, f.life) });
+  }
+};
+
+// fallback path if WebGL/Three.js failed to load — the original full 2D renderer, unchanged
+GAME._drawRaceWorld2D = (ctx) => {
   ctx.drawImage(G.track.canvas, 0, 0);
   ctx.drawImage(G.marks, 0, 0);
 
@@ -903,31 +951,7 @@ GAME._drawRaceWorld = (ctx) => {
     ctx.drawImage(fr, (t.x - w / 2) | 0, (dy - w / 2) | 0, w | 0, w | 0);
   }
 
-  // particles: soft puffs that grow as they fade (dust/mud/smoke), short bright
-  // streaks for sparks, and an expanding ring for hard-impact flashes
-  for (const p of G.particles) {
-    const a = p.life / p.max;
-    if (p.kind === 'spark') {
-      ctx.strokeStyle = `rgba(${p.col},${a.toFixed(2)})`;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(p.x, p.y);
-      ctx.lineTo(p.x - p.vx * 0.025, p.y - p.vy * 0.025);
-      ctx.stroke();
-    } else if (p.kind === 'flash') {
-      ctx.strokeStyle = `rgba(${p.col},${(a * 0.7).toFixed(2)})`;
-      ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(p.x, p.y, (1 - a) * 16 + 2, 0, U.TAU); ctx.stroke();
-    } else {
-      const grow = 1 + (1 - a) * (p.growAmt || 0.5);
-      ctx.fillStyle = `rgba(${p.col},${(a * (p.alphaMax || 0.75)).toFixed(2)})`;
-      ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(0.6, p.size * grow / 2), 0, U.TAU); ctx.fill();
-    }
-  }
-  // floaters
-  for (const f of G.floaters) {
-    U.text(ctx, f.txt, f.x | 0, f.y | 0, { align: 'center', color: f.col, outline: '#181008', alpha: Math.min(1, f.life) });
-  }
+  GAME._drawOverlayFX(ctx);
 };
 
 // ---------- HUD ----------

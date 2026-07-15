@@ -11,18 +11,31 @@
     overflow: hidden;
     display: flex; align-items: center; justify-content: center;
   }
+  #stage {
+    position: relative;
+    width: 512px; height: 480px;
+    background: #000;
+  }
+  #stage canvas {
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%;
+  }
   #screen {
     image-rendering: pixelated;
     image-rendering: crisp-edges;
-    background: #000;
   }
 </style>
 </head>
 <body>
-<canvas id="screen" width="512" height="480"></canvas>
+<div id="stage">
+  <canvas id="scene3d" width="512" height="480"></canvas>
+  <canvas id="screen" width="512" height="480"></canvas>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.min.js"></script>
 <script src="js/util.js"></script>
 <script src="js/sprites.js"></script>
 <script src="js/tracks.js"></script>
+<script src="js/render3d.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/music.js"></script>
 <script src="js/game.js"></script>

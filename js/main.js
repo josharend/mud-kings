@@ -48,13 +48,13 @@ INPUT.beginTick = () => {
 INPUT.wasPressed = (code) => INPUT.pressed.has(code);
 
 // ---------- boot & loop ----------
-let _canvas, _ctx;
+let _canvas, _ctx, _stage;
 
 const _resize = () => {
   const s = Math.max(1, Math.min(window.innerWidth / 512, window.innerHeight / 480));
   const scale = s >= 1.5 ? Math.floor(s * 2) / 2 : s; // half-integer steps look fine
-  _canvas.style.width = (512 * scale) + 'px';
-  _canvas.style.height = (480 * scale) + 'px';
+  _stage.style.width = (512 * scale) + 'px';
+  _stage.style.height = (480 * scale) + 'px';
 };
 
 const STEP = 1 / 60;
@@ -80,6 +80,7 @@ const _frame = (now) => {
 };
 
 const _boot = () => {
+  _stage = document.getElementById('stage');
   _canvas = document.getElementById('screen');
   _ctx = _canvas.getContext('2d');
   _ctx.imageSmoothingEnabled = false;
@@ -87,6 +88,7 @@ const _boot = () => {
   _resize();
 
   SPR.init();
+  R3.init(document.getElementById('scene3d')); // sets R3.ready=false cleanly if WebGL/Three.js unavailable
   INPUT.init();
   GAME.init();
 
@@ -113,7 +115,16 @@ const DBG = {
   }),
   tick: (n = 1, dt = STEP) => { for (let i = 0; i < n; i++) { INPUT.beginTick(); GAME.tick(dt); } },
   draw: () => GAME.draw(_ctx),
-  shot: () => _canvas.toDataURL('image/png'),
+  // composites the WebGL race-world canvas under the 2D overlay canvas — the visible
+  // page shows both stacked via CSS, but a screenshot needs them flattened into one image
+  shot: () => {
+    const out = U.mkCanvas(512, 480);
+    const octx = out.getContext('2d');
+    const scene3d = document.getElementById('scene3d');
+    if (scene3d) octx.drawImage(scene3d, 0, 0);
+    octx.drawImage(_canvas, 0, 0);
+    return out.toDataURL('image/png');
+  },
   press: (code) => { INPUT.queue.add(code); },
   autopilot: (on = true) => { // make human trucks drive themselves
     for (const t of GAME.G.trucks) if (!t.isAI) t.isAI = on ? true : (t.playerIdx !== null ? false : t.isAI);

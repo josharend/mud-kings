@@ -2,15 +2,18 @@
 
 An original tribute to the golden age of single-screen stadium off-road arcade
 racers (1989 vintage). All code, art, sounds, names, and tracks are original —
-the gameplay formula is the homage.
+the gameplay formula is the homage. Renders in real 3D via Three.js.
 
 ## Run it
 
-Any static server works; no build, no dependencies:
+Any static server works; no build step, no npm:
 
     python -m http.server 8653 --directory mud-kings
 
-or use the `mud-kings` entry in `Games/.claude/launch.json`.
+or use the `mud-kings` entry in `Games/.claude/launch.json`. Three.js loads
+from a CDN at runtime — if that's blocked (offline, firewall) the game
+detects it and automatically falls back to the original flat top-down 2D
+renderer, so it still plays either way.
 
 ## How to play
 
@@ -69,34 +72,39 @@ you, it just stops gripping.
 
 ## Graphics
 
-The track surface is one continuous painted dirt shape, not a grid of repeated
-tiles — mud and water blend into it with soft edges, and a candy-striped tube
-rail hugs the actual carved corridor around every curve, just like the real
-cabinet's track art. Moguls are big raised mounds with a real highlight and
-drop-shadow, not flat bumps.
+The race world is real 3D, rendered with Three.js/WebGL: a directional sun
+light with cast shadows, a candy-striped barrier rail that's actual raised
+geometry hugging every curve, moguls as real raised mounds you can see cast a
+shadow, and low-poly toy-truck models (body, cab, roll bar, chrome bumpers,
+knobby tires with lug-nut hubs, a chassis-specific spoiler/bull-bar/snorkel)
+that rotate and pitch in full 3D instead of swapping between flat sprite
+frames. The ground itself reuses the game's richly painted 2D dirt/mud/grass/
+water texture as a 3D-mapped surface, so none of that detail was lost moving
+into 3D. Night tracks get real point lights at the four tower positions
+instead of a flat gradient hack.
 
-Every truck is prerendered pixel art with 7-tone rounded-metal shading, chrome
-bumpers and roll bars, knobby tread with lug-nut hubs, side mirrors, a light
-bar, and a sponsor number decal on the tailgate — each chassis adds its own
-silhouette (JACKRABBIT's spoiler, BULLDOG's bull bar, MUDCAT's snorkel). The
-stadium has a canopy roofline around the whole perimeter, a crowd of tiny
-people (not just colored dots), richer dirt/mud/grass/water texture, and
-mogul bumps with a proper highlight-and-shadow pop. Collisions throw sparks
-and a flash ring on hard hits; dust, mud, and mogul-landing particles are soft
-growing puffs instead of squares. The whole screen runs through a CRT pass —
-scanlines plus a vignette — for that real arcade-cabinet look.
+The 2D canvas still handles every menu, the HUD, and lightweight particle FX
+(dust, sparks, impact flashes) as a transparent overlay on top of the WebGL
+canvas — and it's still the full renderer if 3D isn't available. The whole
+screen runs through a CRT pass on top of everything — scanlines plus a
+vignette — for that arcade-cabinet look.
 
 ## Architecture (plain globals, load order matters)
 
-`js/util.js` (math, seeded RNG, 3×5 bitmap font) → `js/sprites.js` (procedural
-pixel-art trucks prerendered in 16 rotations × 4 colors × 3 chassis, flames,
-pickups) → `js/tracks.js` (tile-grid track builder + themed stadium renderer;
-each track is a centerline polyline carved into a corridor via `_carvePath`,
-with the centerline doubling as the AI waypoint list) → `js/audio.js`
-(all-procedural WebAudio SFX) → `js/music.js` (chiptune engine: title/race/shop
-loops scheduled ahead of the AudioContext clock; race theme shifts up an octave
-on the final lap) → `js/game.js` (physics, AI, race flow, HUD) → `js/shop.js`
-→ `js/main.js` (input, fixed-step loop with timer fallback for hidden tabs).
+`js/util.js` (math, seeded RNG, 3×5 bitmap font) → `js/sprites.js` (2D
+fallback pixel-art trucks, 16 rotations × 4 colors × 3 chassis, flames,
+pickups — also the source of truth for team palettes/chassis stats that the
+3D renderer reads) → `js/tracks.js` (tile-grid track builder + themed 2D
+stadium renderer, still used both as the 2D fallback AND as the ground
+texture for the 3D scene; each track is a centerline polyline carved into a
+corridor via `_carvePath`, with the centerline doubling as the AI waypoint
+list) → `js/render3d.js` (Three.js scene/camera/lighting, track/truck/pickup
+3D geometry, and the physics→3D sync — reads `GAME.G` state, never writes it)
+→ `js/audio.js` (all-procedural WebAudio SFX) → `js/music.js` (chiptune
+engine) → `js/game.js` (physics, AI, race flow, HUD, and the 3D/2D render
+dispatch) → `js/shop.js` → `js/main.js` (input, fixed-step loop, boots R3
+before GAME so the first race build has 3D ready).
 
-Debug/test hooks on `window.DBG`: `state()`, `tick(n)`, `draw()`, `shot()`,
-`press(code)`, `autopilot()`, `give(amount)`, `setRace(n)`.
+Debug/test hooks on `window.DBG`: `state()`, `tick(n)`, `draw()`, `shot()`
+(composites the WebGL canvas + 2D overlay into one PNG), `press(code)`,
+`autopilot()`, `give(amount)`, `setRace(n)`.
