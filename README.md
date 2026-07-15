@@ -75,10 +75,12 @@ you, it just stops gripping.
 The race world is real 3D, rendered with Three.js/WebGL: a directional sun
 light with cast shadows, a candy-striped barrier rail that's actual raised
 geometry hugging every curve, moguls as real raised mounds you can see cast a
-shadow, and low-poly toy-truck models (body, cab, roll bar, chrome bumpers,
-knobby tires with lug-nut hubs, a chassis-specific spoiler/bull-bar/snorkel)
-that rotate and pitch in full 3D instead of swapping between flat sprite
-frames. The ground itself reuses the game's richly painted 2D dirt/mud/grass/
+shadow, and chunky low-poly toy-truck models (body, cab, roll bar, chrome
+bumpers, knobby tires with lug-nut hubs, a chassis-specific spoiler/bull-bar/
+snorkel) sized like the real arcade's trucks — big enough to dominate the
+lane, not toy-sized against the track — that rotate and pitch in full 3D
+instead of swapping between flat sprite frames. The ground itself reuses the
+game's richly painted 2D dirt/mud/grass/
 water texture as a 3D-mapped surface, so none of that detail was lost moving
 into 3D. Night tracks get real point lights at the four tower positions
 instead of a flat gradient hack.

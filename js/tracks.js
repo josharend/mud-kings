@@ -57,14 +57,17 @@ const _carvePath = (g, pts, halfWidth, tile, bulge) => {
 const _startPatch = (g, p0) => _rect(g, Math.round(p0[0]) - 1, Math.round(p0[1]) - 1, Math.round(p0[0]), Math.round(p0[1]), 'S');
 // facing direction from the start point toward the first real corner
 const _startDir = (p0, p1) => Math.atan2(p1[1] - p0[1], p1[0] - p0[0]);
-// 2x2 grid of start slots, tucked behind p0 along the reverse of the p0->p1 direction
+// 2x2 grid of start slots, tucked behind p0 along the reverse of the p0->p1 direction.
+// p0 sits near the START of its pass, so "behind" it usually runs out of corridor and
+// into the outer stadium wall within ~3 tiles — depth here must stay under that on every
+// track (verified: max 2.6 tiles here, the old known-safe formula topped out at 2.7).
 const _mkSlots = (p0, p1) => {
   const dx = p1[0] - p0[0], dy = p1[1] - p0[1];
   const d = Math.hypot(dx, dy) || 1;
   const fx = dx / d, fy = dy / d, px = -fy, py = fx;
   const slots = [];
   for (let row = 0; row < 2; row++) for (let col = 0; col < 2; col++) {
-    const back = 1.3 + row * 1.4, off = (col - 0.5) * 1.7;
+    const back = 1.0 + row * 0.8, off = (col - 0.5) * 2.4;
     slots.push([p0[0] - fx * back + px * off, p0[1] - fy * back + py * off]);
   }
   return slots;

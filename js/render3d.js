@@ -165,6 +165,9 @@ R3.syncPickups = (pickups) => {
 };
 
 // ---------- trucks: procedurally-built low-poly 3D models, not sprites ----------
+R3.TRUCK_SCALE = 2.0; // real arcade trucks are chunky relative to the track — the physics
+                       // collision radius stays untouched, this is purely a visual bump
+
 R3.buildTruckMesh = (colorIdx, chassisIdx) => {
   const pal = SPR.PALETTES[colorIdx];
   const bodyMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(pal.body), roughness: 0.45, metalness: 0.15 });
@@ -203,12 +206,14 @@ R3.buildTruckMesh = (colorIdx, chassisIdx) => {
   bumperF.position.set(0, 6.5, 12.5);
   grp.add(bumperF);
 
+  // wheel Y = its own radius exactly, so the tire bottom sits flush on y=0 —
+  // matters a lot once the whole truck gets scaled up (any gap/overlap scales too)
   const mkWheel = (x, z, big) => {
     const w = new THREE.Mesh(R3._wheelGeo, R3._tireMat);
     w.rotation.z = Math.PI / 2;
     const s = big ? 1.28 : 1;
     w.scale.set(s, 1, s);
-    w.position.set(x, big ? 5.6 : 4.4, z);
+    w.position.set(x, 5.5 * s, z);
     w.castShadow = true;
     return w;
   };
@@ -233,7 +238,10 @@ R3.buildTruckMesh = (colorIdx, chassisIdx) => {
     grp.add(snork);
   }
 
-  return grp;
+  const outer = new THREE.Group();
+  grp.scale.setScalar(R3.TRUCK_SCALE);
+  outer.add(grp);
+  return outer;
 };
 
 R3.buildTrucks = (trucks) => {
