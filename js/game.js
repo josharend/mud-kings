@@ -814,7 +814,7 @@ GAME._ensureFX = (ctx) => {
     const g = c.getContext('2d');
     const grad = g.createRadialGradient(256, 240, 140, 256, 240, 380);
     grad.addColorStop(0, 'rgba(0,0,0,0)');
-    grad.addColorStop(1, 'rgba(0,0,0,0.42)');
+    grad.addColorStop(1, 'rgba(0,0,0,0.26)');
     g.fillStyle = grad; g.fillRect(0, 0, 512, 480);
     GAME._vignetteCanvas = c;
   }
@@ -956,44 +956,46 @@ GAME._drawRaceWorld2D = (ctx) => {
 
 // ---------- HUD ----------
 GAME._drawHud = (ctx) => {
-  ctx.fillStyle = 'rgba(10,8,12,0.72)';
-  ctx.fillRect(0, 0, 512, 30);
-
   const ranked = GAME._ranked();
+
+  // slim top strip: race title only — the drama lives in the corner panel + banners
+  ctx.fillStyle = 'rgba(8,6,10,0.6)';
+  ctx.fillRect(136, 0, 240, 13);
+  U.text(ctx, 'RACE ' + (G.raceIdx + 1) + ' - ' + G.track.name, 256, 3, { align: 'center', color: '#8fd' });
+
+  // chunky arcade corner readout, bottom-left like the cabinet: big timer, one colored
+  // lap digit per truck, nitro bottles, place + cash per human
+  const x = 6, y = 388, w = 150, h = 86;
+  ctx.fillStyle = 'rgba(8,6,10,0.78)'; ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = '#9aa2ac'; ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+  ctx.strokeStyle = '#565b63'; ctx.strokeRect(x + 2.5, y + 2.5, w - 5, h - 5);
+
+  const tm = Math.floor(G.raceT);
+  U.text(ctx, Math.floor(tm / 60) + ':' + ('' + (tm % 60)).padStart(2, '0') + '.' + (((G.raceT % 1) * 10) | 0),
+    x + 8, y + 7, { scale: 2, color: '#f0ece0' });
+
+  U.text(ctx, 'LAP', x + 8, y + 26, { color: '#9aa' });
+  for (let i = 0; i < G.trucks.length; i++) {
+    const t = G.trucks[i];
+    U.text(ctx, '' + Math.min(t.lap, TUNE.LAPS), x + 42 + i * 24, y + 22, { scale: 2, color: SPR.PALETTES[t.color].light });
+  }
+
+  U.text(ctx, 'NITRO', x + 8, y + 42, { color: '#9aa' });
   for (let i = 0; i < G.humans; i++) {
     const t = G.trucks[i];
-    const x = i === 0 ? 6 : 320;
-    const pal = SPR.PALETTES[t.color];
-    ctx.fillStyle = pal.body; ctx.fillRect(x, 5, 8, 8);
-    ctx.strokeStyle = '#000'; ctx.strokeRect(x + 0.5, 5.5, 7, 7);
-    const pos = t.finished ? t.place : ranked.indexOf(t) + 1;
-    U.text(ctx, 'P' + (i + 1), x + 12, 5, { color: '#fff' });
-    U.text(ctx, GAME.placeName(pos), x + 12, 13, { scale: 2, color: '#ffd040' });
-    U.text(ctx, 'LAP ' + Math.min(t.lap, TUNE.LAPS) + '/' + TUNE.LAPS, x + 48, 5, { color: '#cdd' });
-    // nitro bottles
-    for (let n = 0; n < Math.min(t.nitros, 6); n++) {
-      ctx.fillStyle = '#d02818'; ctx.fillRect(x + 48 + n * 5, 14, 3, 6);
-      ctx.fillStyle = '#9aa2a8'; ctx.fillRect(x + 48 + n * 5, 12, 3, 2);
+    for (let n = 0; n < Math.min(t.nitros, 8); n++) {
+      ctx.fillStyle = '#d02818'; ctx.fillRect(x + 42 + i * 54 + n * 6, y + 41, 4, 7);
+      ctx.fillStyle = '#9aa2a8'; ctx.fillRect(x + 42 + i * 54 + n * 6, y + 39, 4, 2);
     }
-    if (t.nitros > 6) U.text(ctx, '+' + (t.nitros - 6), x + 48 + 32, 14, { color: '#f66' });
-    U.text(ctx, U.fmtMoney(G.players[t.playerIdx].money), x + 48, 23, { color: '#ffe066' });
+    if (t.nitros > 8) U.text(ctx, '+', x + 42 + i * 54 + 48, y + 41, { color: '#f66' });
   }
-  // center: race info
-  U.text(ctx, 'RACE ' + (G.raceIdx + 1), 256, 5, { align: 'center', color: '#fff' });
-  U.text(ctx, G.track.name, 256, 13, { align: 'center', color: '#8fd' });
-  const tm = Math.floor(G.raceT);
-  U.text(ctx, Math.floor(tm / 60) + ':' + ('' + (tm % 60)).padStart(2, '0'), 256, 22, { align: 'center', color: '#aab' });
 
-  if (G.humans === 1) {
-    // right side: leaderboard mini
-    const r = ranked.slice(0, 4);
-    for (let i = 0; i < r.length; i++) {
-      const pal = SPR.PALETTES[r[i].color];
-      ctx.fillStyle = pal.body;
-      ctx.fillRect(330 + i * 44, 6, 6, 6);
-      U.text(ctx, GAME.placeName(i + 1), 338 + i * 44, 6, { color: '#ccd' });
-    }
-    U.text(ctx, 'NITRO: SPACE', 330, 22, { color: '#667' });
+  for (let i = 0; i < G.humans; i++) {
+    const t = G.trucks[i];
+    const pos = t.finished ? t.place : ranked.indexOf(t) + 1;
+    U.text(ctx, 'P' + (i + 1), x + 8, y + 56 + i * 13, { color: SPR.PALETTES[t.color].light });
+    U.text(ctx, GAME.placeName(pos), x + 30, y + 56 + i * 13, { color: '#ffd040' });
+    U.text(ctx, U.fmtMoney(G.players[t.playerIdx].money), x + 62, y + 56 + i * 13, { color: '#ffe066' });
   }
 };
 

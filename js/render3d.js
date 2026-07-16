@@ -7,10 +7,10 @@ const R3 = {
   ready: false,
   renderer: null, scene: null, camera: null, sunLight: null, nightLights: [],
   trackGroup: null, truckMeshes: [], truckKey: [], pickupMeshes: [],
-  WORLD_W: 512, WORLD_H: 480, SCALE_Z: 0.55,
+  WORLD_W: 512, WORLD_H: 480, SCALE_Z: 0.8,
   _heightFn: null,                // current track's terrain height sampler — world(x,z) -> y
-  TERRAIN_TRACK_AMP: 6,           // gentle undulation on the actual drivable surface
-  TERRAIN_OFFTRACK_AMP: 22,       // bigger rolling hills in the infield/outfield — purely visual
+  TERRAIN_TRACK_AMP: 5,           // gentle organic undulation layered over everything
+  BERM_AMP: 24,                   // dirt berms/ridges rise to this between lanes (carved-bowl look)
 };
 
 // deterministic string hash -> RNG seed, so each track's terrain is fixed (same track,
@@ -52,12 +52,15 @@ R3.init = (canvas) => {
   if (THREE.SRGBColorSpace) R3.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   R3.scene = new THREE.Scene();
+  R3.scene.background = new THREE.Color(0x0b0a10);
+  R3.scene.fog = new THREE.Fog(0x0b0a10, 950, 1900);
 
   // shallower, more raking angle than a near-top-down view — a steep angle flattens out
-  // terrain elevation almost entirely, and this is what actually sells rolling 3D ground
-  R3.camera = new THREE.PerspectiveCamera(38, R3.WORLD_W / R3.WORLD_H, 20, 3000);
-  R3.camera.position.set(R3.WORLD_W / 2, 380, R3.WORLD_H / 2 + 640);
-  R3.camera.lookAt(R3.WORLD_W / 2, 0, R3.WORLD_H / 2 - 30);
+  // terrain elevation almost entirely, and this is what actually sells rolling 3D ground.
+  // Framed tight so the stadium fills the screen like the cabinet, not a diorama in a void.
+  R3.camera = new THREE.PerspectiveCamera(40, R3.WORLD_W / R3.WORLD_H, 20, 3000);
+  R3.camera.position.set(R3.WORLD_W / 2, 350, R3.WORLD_H / 2 + 528);
+  R3.camera.lookAt(R3.WORLD_W / 2, 2, R3.WORLD_H / 2 + 4);
 
   R3.amb = new THREE.AmbientLight(0xffffff, 0.62);
   R3.scene.add(R3.amb);
@@ -87,7 +90,69 @@ R3.init = (canvas) => {
   R3._sackMat = new THREE.MeshStandardMaterial({ color: 0xcfa050, roughness: 0.85 });
   R3._canMat = new THREE.MeshStandardMaterial({ color: 0xd02818, roughness: 0.3, metalness: 0.3 });
 
+  R3._buildStadium();
   R3.ready = true;
+};
+
+// packed-crowd texture for the grandstands: dark risers + hundreds of colorful specks
+R3._mkCrowdTex = () => {
+  const c = U.mkCanvas(256, 64);
+  const g = c.getContext('2d');
+  g.fillStyle = '#2c2a33'; g.fillRect(0, 0, 256, 64);
+  for (let y = 6; y < 64; y += 8) { g.fillStyle = '#211f28'; g.fillRect(0, y, 256, 2); }
+  const cols = ['#e04040', '#e8c040', '#40a0e0', '#40c080', '#e080c0', '#f0ece0', '#e08030'];
+  const rnd = U.rng(777);
+  for (let i = 0; i < 460; i++) {
+    g.fillStyle = cols[(rnd() * cols.length) | 0];
+    g.fillRect((rnd() * 254) | 0, (rnd() * 61) | 0, 2, 3);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  return tex;
+};
+
+// the stadium bowl around the platform: a dark arena floor plus four crowd-covered
+// grandstand walls with rooflines — this is what stops the track reading as a floating
+// carpet in a gray void. Built once at init; it never changes per track.
+R3._buildStadium = () => {
+  const W = R3.WORLD_W, H = R3.WORLD_H;
+  const grp = new THREE.Group();
+
+  // arena floor sits WELL below the terrain's deepest noise dip (~-5) — at a shallow
+  // depth it z-fights up through every dip in the ground mesh as big dark blobs
+  const apron = new THREE.Mesh(
+    new THREE.PlaneGeometry(2600, 2600),
+    new THREE.MeshStandardMaterial({ color: 0x221f27, roughness: 1 }));
+  apron.rotation.x = -Math.PI / 2;
+  apron.position.set(W / 2, -11.8, H / 2);
+  apron.receiveShadow = true;
+  grp.add(apron);
+
+  const crowdTex = R3._mkCrowdTex();
+  const mkStand = (len) => {
+    const t = crowdTex.clone();
+    t.needsUpdate = true;
+    t.wrapS = THREE.RepeatWrapping;
+    t.repeat.set(Math.max(1, Math.round(len / 128)), 1);
+    const s = new THREE.Group();
+    const wall = new THREE.Mesh(
+      new THREE.BoxGeometry(len, 38, 18),
+      new THREE.MeshStandardMaterial({ map: t, roughness: 0.9 }));
+    wall.position.y = 19;
+    s.add(wall);
+    const roof = new THREE.Mesh(
+      new THREE.BoxGeometry(len + 8, 3.5, 26),
+      new THREE.MeshStandardMaterial({ color: 0x16141c, roughness: 0.8 }));
+    roof.position.y = 40;
+    s.add(roof);
+    return s;
+  };
+  const north = mkStand(W + 140); north.position.set(W / 2, 0, -24); grp.add(north);
+  const south = mkStand(W + 140); south.position.set(W / 2, 0, H + 24); grp.add(south);
+  const west = mkStand(H + 60); west.rotation.y = Math.PI / 2; west.position.set(-24, 0, H / 2); grp.add(west);
+  const east = mkStand(H + 60); east.rotation.y = Math.PI / 2; east.position.set(W + 24, 0, H / 2); grp.add(east);
+
+  R3.scene.add(grp);
 };
 
 R3._disposeGroup = (grp) => {
@@ -111,13 +176,46 @@ R3.buildTrack = (track) => {
   const isRailAt = (nx, ny) => nx >= 0 && ny >= 0 && nx < TRK.COLS && ny < TRK.ROWS &&
     !DRIVABLE[track.grid[ny][nx]] && track.grid[ny][nx] !== '#' && track.grid[ny][nx] !== 'G';
 
-  // terrain: a real height-displaced mesh, not a flat plane with a texture on it — gentle
-  // rolling undulation on the drivable surface, bigger dramatic hills off to the sides
-  const rawHeight = R3._mkHeightFn(track.name);
+  // purposeful arcade terrain, not random hills: the track is CARVED into a dirt bowl.
+  // Berm height grows with BFS distance from the drivable corridor, so smooth dirt ridges
+  // rise automatically between adjacent lanes and wide infields become mesas — exactly
+  // the reference cabinet's look. The stands/wall ring is pinned dead flat so the
+  // platform sits flush on the arena floor instead of waving like a carpet edge.
+  const CO = TRK.COLS, RO = TRK.ROWS;
+  const dist = new Int16Array(CO * RO).fill(999);
+  const queue = [];
+  for (let ty = 0; ty < RO; ty++) for (let tx = 0; tx < CO; tx++) {
+    if (DRIVABLE[track.grid[ty][tx]]) { dist[ty * CO + tx] = 0; queue.push(ty * CO + tx); }
+  }
+  for (let qi = 0; qi < queue.length; qi++) {
+    const i = queue[qi], tx = i % CO, ty = (i / CO) | 0, d = dist[i];
+    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx2 = tx + ox, ny2 = ty + oy;
+      if (nx2 < 0 || ny2 < 0 || nx2 >= CO || ny2 >= RO) continue;
+      const j = ny2 * CO + nx2;
+      if (dist[j] > d + 1) { dist[j] = d + 1; queue.push(j); }
+    }
+  }
+  const tileH = new Float32Array(CO * RO);
+  for (let ty = 0; ty < RO; ty++) for (let tx = 0; tx < CO; tx++) {
+    const ch = track.grid[ty][tx], i = ty * CO + tx;
+    if (ch === 'G' || ch === '#' || DRIVABLE[ch]) { tileH[i] = 0; continue; }
+    tileH[i] = Math.min(dist[i], 3) / 3 * R3.BERM_AMP;
+  }
+  const rawNoise = R3._mkHeightFn(track.name);
+  const bermAt = (wx, wz) => {
+    // bilinear over tile centers — smooth mounds, no terraced steps
+    const gx = U.clamp(wx / 16 - 0.5, 0, CO - 1.0001), gz = U.clamp(wz / 16 - 0.5, 0, RO - 1.0001);
+    const x0 = gx | 0, z0 = gz | 0, x1 = Math.min(x0 + 1, CO - 1), z1 = Math.min(z0 + 1, RO - 1);
+    const fx = gx - x0, fz = gz - z0;
+    const h0 = tileH[z0 * CO + x0] + (tileH[z0 * CO + x1] - tileH[z0 * CO + x0]) * fx;
+    const h1 = tileH[z1 * CO + x0] + (tileH[z1 * CO + x1] - tileH[z1 * CO + x0]) * fx;
+    return h0 + (h1 - h0) * fz;
+  };
   const heightAt = (wx, wz) => {
-    const tx = U.clamp(Math.floor(wx / 16), 0, TRK.COLS - 1), tz = U.clamp(Math.floor(wz / 16), 0, TRK.ROWS - 1);
-    const amp = DRIVABLE[track.grid[tz][tx]] ? R3.TERRAIN_TRACK_AMP : R3.TERRAIN_OFFTRACK_AMP;
-    return rawHeight(wx, wz, amp);
+    // organic noise fades to zero at the platform border so the outer ring stays flat
+    const edgeFade = U.clamp(Math.min(wx, wz, R3.WORLD_W - wx, R3.WORLD_H - wz) / 48 - 1, 0, 1);
+    return bermAt(wx, wz) + rawNoise(wx, wz, R3.TERRAIN_TRACK_AMP) * edgeFade;
   };
   R3._heightFn = heightAt;
 
@@ -125,11 +223,14 @@ R3.buildTrack = (track) => {
   tex.needsUpdate = true;
   if (THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
   const groundMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95 });
-  const groundGeo = new THREE.PlaneGeometry(R3.WORLD_W, R3.WORLD_H, 48, 45);
+  const groundGeo = new THREE.PlaneGeometry(R3.WORLD_W, R3.WORLD_H, 96, 90);
   const pos = groundGeo.attributes.position;
   for (let i = 0; i < pos.count; i++) {
     const wx = pos.getX(i) + R3.WORLD_W / 2, wz = R3.WORLD_H / 2 - pos.getY(i);
-    pos.setZ(i, heightAt(wx, wz));
+    // outermost vertices fold straight down into a skirt so the platform reads as a
+    // solid slab on the arena floor — no see-through slit under the terrain edge
+    if (wx < 3 || wz < 3 || wx > R3.WORLD_W - 3 || wz > R3.WORLD_H - 3) pos.setZ(i, -12);
+    else pos.setZ(i, heightAt(wx, wz));
   }
   groundGeo.computeVertexNormals();
   const ground = new THREE.Mesh(groundGeo, groundMat);
@@ -158,14 +259,82 @@ R3.buildTrack = (track) => {
     }
   }
 
+  // strings of colored pennant flags sagging across the track — the cabinet's signature
+  // dressing. Posts sit just past the rails on either side of the corridor, found by
+  // stepping outward from the centerline until the grid stops being drivable.
+  const FLAG_COLS = [0xe04040, 0xe8c040, 0x40a0e0, 0xf0ece0, 0x40c080];
+  const addFlagLine = (wpA, wpB) => {
+    const px0 = wpA[0], pz0 = wpA[1];
+    const dl = Math.hypot(wpB[0] - px0, wpB[1] - pz0) || 1;
+    const nx = -(wpB[1] - pz0) / dl, nz = (wpB[0] - px0) / dl;
+    const edge = (sgn) => {
+      for (let t = 0; t < 90; t += 3) {
+        const tx = U.clamp((px0 + nx * sgn * t) / 16 | 0, 0, CO - 1);
+        const tz = U.clamp((pz0 + nz * sgn * t) / 16 | 0, 0, RO - 1);
+        if (!DRIVABLE[track.grid[tz][tx]]) return t + 6;
+      }
+      return 42;
+    };
+    const tA = edge(1), tB = edge(-1);
+    const ax = px0 + nx * tA, az = pz0 + nz * tA;
+    const bx = px0 - nx * tB, bz = pz0 - nz * tB;
+    const ah = heightAt(ax, az), bh = heightAt(bx, bz);
+    const postH = 30;
+    for (const [x, z, hh] of [[ax, az, ah], [bx, bz, bh]]) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, postH, 6), R3._chromeMat);
+      post.userData.ownGeo = true;
+      post.position.set(x, hh + postH / 2, z);
+      post.castShadow = true;
+      grp.add(post);
+    }
+    const N = 11, posArr = [], colArr = [], ropePts = [];
+    const topA = ah + postH - 1, topB = bh + postH - 1;
+    const sagY = (t) => topA + (topB - topA) * t - 7 * Math.sin(Math.PI * t);
+    for (let k = 0; k < N; k++) {
+      const t = k / (N - 1);
+      const x = ax + (bx - ax) * t, z = az + (bz - az) * t, y = sagY(t);
+      ropePts.push(new THREE.Vector3(x, y, z));
+      if (k < N - 1) {
+        const t2 = (k + 1) / (N - 1);
+        const x2 = ax + (bx - ax) * t2, z2 = az + (bz - az) * t2, y2 = sagY(t2);
+        const c = new THREE.Color(FLAG_COLS[k % FLAG_COLS.length]);
+        posArr.push(x, y, z, x2, y2, z2, (x + x2) / 2, (y + y2) / 2 - 6, (z + z2) / 2);
+        for (let v = 0; v < 3; v++) colArr.push(c.r, c.g, c.b);
+      }
+    }
+    const fg = new THREE.BufferGeometry();
+    fg.setAttribute('position', new THREE.Float32BufferAttribute(posArr, 3));
+    fg.setAttribute('color', new THREE.Float32BufferAttribute(colArr, 3));
+    const flags = new THREE.Mesh(fg, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+    flags.userData.ownGeo = true; flags.userData.ownMat = true;
+    grp.add(flags);
+    const rope = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(ropePts),
+      new THREE.LineBasicMaterial({ color: 0xbfc4ca }));
+    rope.userData.ownGeo = true; rope.userData.ownMat = true;
+    grp.add(rope);
+  };
+  // only hang flags where the corridor runs north-south, so the rope spans left-right
+  // on screen — a rope running toward the camera projects edge-on as an ugly vertical
+  // streak with its flags invisible
+  const wn = track.wps.length;
+  const cands = [];
+  for (let i = 0; i < wn; i++) {
+    const a = track.wps[i], b = track.wps[(i + 1) % wn];
+    if (Math.abs(b[1] - a[1]) >= Math.abs(b[0] - a[0])) cands.push(i);
+  }
+  if (cands.length === 0) cands.push(0);
+  const picks = new Set([cands[0], cands[Math.floor(cands.length / 2)], cands[cands.length - 1]]);
+  for (const i of picks) addFlagLine(track.wps[i], track.wps[(i + 1) % wn]);
+
   R3.trackGroup = grp;
   R3.scene.add(grp);
 };
 
 R3.setNight = (isNight) => {
   if (!R3.ready) return;
-  R3.amb.intensity = isNight ? 0.32 : 0.62;
-  R3.sunLight.intensity = isNight ? 0.35 : 1.05;
+  R3.amb.intensity = isNight ? 0.34 : 0.9;
+  R3.sunLight.intensity = isNight ? 0.35 : 1.35;
   if (isNight && R3.nightLights.length === 0) {
     for (const [lx, lz] of [[80, 80], [432, 80], [80, 400], [432, 400]]) {
       const pl = new THREE.PointLight(0xffe6b0, 1.4, 260, 2);
@@ -222,9 +391,16 @@ R3.TRUCK_SCALE = 1.15;
 
 R3.buildTruckMesh = (colorIdx, chassisIdx) => {
   const pal = SPR.PALETTES[colorIdx];
-  const bodyMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(pal.body), roughness: 0.45, metalness: 0.15 });
+  // slight emissive so team colors pop vividly at small size, like the cabinet's sprites
+  const bodyMat = new THREE.MeshStandardMaterial({
+    color: new THREE.Color(pal.body), roughness: 0.45, metalness: 0.15,
+    emissive: new THREE.Color(pal.body).multiplyScalar(0.22),
+  });
   const darkMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(pal.dark), roughness: 0.6 });
-  const stripeMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(pal.light), roughness: 0.4 });
+  const stripeMat = new THREE.MeshStandardMaterial({
+    color: new THREE.Color(pal.light), roughness: 0.4,
+    emissive: new THREE.Color(pal.light).multiplyScalar(0.18),
+  });
   const grp = new THREE.Group();
   const own = (mesh, geo) => { mesh.userData.ownGeo = true; mesh.userData.ownMat = false; if (geo) mesh.geometry = geo; return mesh; };
 

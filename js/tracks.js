@@ -216,7 +216,9 @@ TRK.THEMES = {
   day: {
     dirt: (j) => `rgb(${192 + j},${138 + j},${82 + j})`,
     dSpeck1: '#a06f3c', dSpeck2: '#d4a06a', pebble: '#8a6a48',
-    grass: '#4e7a38', gSpeck1: '#62924a', gSpeck2: '#3f6329',
+    // "grass" = the non-drivable infield. The real arcade is nearly all dirt — rough
+    // dark scrub between lanes, not golf-course green (green read as mini-golf).
+    grass: '#7a4e2a', gSpeck1: '#8f5f36', gSpeck2: '#5c3a1e',
     waterBase: '#3f6f9e', waterDark: '#35608c', waterGlint: '#7fa8d0', waterRim: '#b89060',
     mogulHi: '#dca86b', mogulLo: '#8a5a33', mogulMid: '#c89058',
     rut1: 'rgba(96,58,30,0.20)', rut2: 'rgba(70,42,22,0.20)',

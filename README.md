@@ -72,23 +72,30 @@ you, it just stops gripping.
 
 ## Graphics
 
-The race world is real 3D, rendered with Three.js/WebGL. The ground isn't a
-flat plane with a texture on it — it's a height-displaced mesh with genuine
-rolling terrain: gentle undulation on the actual drivable surface, bigger
-dramatic hills across the infield and outfield, all following the same
-per-track deterministic height map so barriers, moguls, pickups, and trucks
-all sit correctly on the terrain instead of floating over it. A directional
-sun casts real shadows, the candy-striped barrier rail is actual raised
-geometry hugging every curve, and moguls are raised mounds you can see cast
-a shadow. Trucks are small low-poly toy-truck models (body, cab, roll bar,
-chrome bumpers, knobby tires with lug-nut hubs, a chassis-specific
-spoiler/bull-bar/snorkel) — sized like real vehicles on a big sprawling
-track, not oversized toys — that rotate and pitch in full 3D instead of
-swapping between flat sprite frames. The ground texture itself reuses the
-game's richly painted 2D dirt/mud/grass/water art, now mapped onto that 3D
-terrain, so none of that detail was lost moving into 3D. Night tracks get
-real point lights at the four tower positions instead of a flat gradient
-hack.
+The race world is real 3D, rendered with Three.js/WebGL, staged like the
+classic cabinet: the track is **carved into a dirt bowl** — berm ridges rise
+between adjacent lanes and wide infields become mesas, computed from the
+track's own shape (height grows with distance from the racing corridor), not
+random hills. The platform sits inside a proper stadium: a dark arena floor,
+four crowd-packed grandstand walls with rooflines, and strings of colored
+**pennant flags** sagging across the track on chrome posts. The palette is
+nearly all rich dirt — the non-drivable infield is rough scrub, not
+golf-course green.
+
+A directional sun casts real shadows, the candy-striped barrier rail is
+raised geometry hugging every curve, and moguls are mounds that cast their
+own shadows. Trucks are small low-poly models (body, cab, roll bar, chrome
+bumpers, knobby tires, chassis-specific spoiler/bull-bar/snorkel) — sized
+like real vehicles on a big sprawling track — that rotate and pitch in full
+3D, with a slight color glow so the four team colors pop at small size.
+Everything samples the same per-track deterministic height map, so barriers,
+moguls, pickups, and trucks all sit correctly on the terrain. The ground
+texture reuses the game's painted 2D art mapped onto the 3D terrain. Night
+tracks get real point lights at the four tower positions.
+
+The HUD is an arcade-style corner readout: big race timer, one colored lap
+digit per truck, nitro bottles, and place + cash per player, boxed in a
+chunky bezel at bottom-left like the cabinet's readout.
 
 The 2D canvas still handles every menu, the HUD, and lightweight particle FX
 (dust, sparks, impact flashes) as a transparent overlay on top of the WebGL
