@@ -556,9 +556,11 @@ GAME._physics = (t, dt, attract) => {
   t.bobPhase += spd * dt * 0.14;
 
   // waypoints / laps — scans a short window ahead so a truck cutting through a
-  // track shortcut can legally skip the indices it bypassed (lap only counts
-  // when the jump lands exactly on the wrap-around marker, so cutting through
-  // the middle of the map can never accidentally credit a full lap)
+  // track shortcut can legally skip the indices it bypassed. A lap counts when the
+  // jump CROSSES the wrap boundary (floor(wpIdx/n) increases), not only when it lands
+  // exactly on the marker — if the first waypoint sits within radius of the last one
+  // along the same straight, the lookahead can hop from n-1 straight past n to n+1,
+  // and an exact-landing check would silently lose that lap every loop.
   const wps = G.track.wps;
   const n = wps.length;
   let reach = -1;
@@ -567,8 +569,9 @@ GAME._physics = (t, dt, attract) => {
     if (U.dist(t.x, t.y, wp[0], wp[1]) < TUNE.WP_RADIUS) { reach = k; break; }
   }
   if (reach >= 0) {
+    const lapsBefore = Math.floor(t.wpIdx / n);
     t.wpIdx += reach + 1;
-    if (t.wpIdx % n === 0) {
+    if (Math.floor(t.wpIdx / n) > lapsBefore) {
       t.lap++;
       if (!t.finished) {
         if (t.lap > TUNE.LAPS) {

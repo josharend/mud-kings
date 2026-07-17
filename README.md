@@ -46,22 +46,24 @@ lift you back onto the racing line.
 
 ## Tracks
 
-Every track is a dense multi-lane maze — 4-6 parallel lanes separated by thin
-dirt ridges lined with candy rail, packed edge to edge like the real cabinet.
-A season runs all eight, one per race:
+Every track is a multi-lane maze — parallel lanes separated by thin dirt
+ridges lined with candy rail, with lanes wide enough that a truck sits at
+about half the lane like the real cabinet. A season runs all eight, one per
+race:
 
-1. **DUST BOWL** — six parallel lanes plus a return straight; a mud shortcut
-   bridges the middle ridge and legally skips two lanes if you dare it.
-2. **THE HOURGLASS** — four wide sweeping lanes stacked with a fast east
-   return, water, moguls, and a mud shortcut.
-3. **SPLASHDOWN** — four lanes, every one crossing ice, plus a shortcut. *(winter)*
-4. **HAIRPIN HAVOC** — six lanes run the hard way with five hazards and NO
-   shortcut — the monster.
-5. **THE COLOSSEUM** — four grand wide lanes; big mogul field, pond, mud.
-6. **SIDEWINDER** — a snake: three full-width rows, a west return, and an
-   east wiggle leg. *(night)*
-7. **THE GAUNTLET** — six short lanes, a hazard dead-center in every single
-   one. *(winter)*
+1. **DUST BOWL** — four lanes, a long bottom straight, an east return; a mud
+   shortcut bridges a ridge and legally skips ahead if you dare it.
+2. **THE HOURGLASS** — four sweeping horizontal lanes with an east return
+   column, water, moguls, and a mud shortcut.
+3. **SPLASHDOWN** — the mirrored maze with two ice lanes, mud, moguls, and a
+   shortcut. *(winter)*
+4. **HAIRPIN HAVOC** — the Dust Bowl maze run the other direction with five
+   hazards and NO shortcut — the monster.
+5. **THE COLOSSEUM** — four grand extra-wide lanes; big mogul field, pond.
+6. **SIDEWINDER** — a snake: four full-width rows and a west return, moguls
+   on alternating rows. *(night)*
+7. **THE GAUNTLET** — short lanes with a hazard in every one, plus a mogul
+   field on the long straight. *(winter)*
 8. **THE HOOK** — a big outer ring, an inner hook curling to a dead-ahead
    tip, and a diagonal chute home. *(night)*
 

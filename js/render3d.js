@@ -322,10 +322,9 @@ R3.syncPickups = (pickups) => {
 };
 
 // ---------- trucks: procedurally-built low-poly 3D models, not sprites ----------
-// Real arcade trucks are small vehicles on a big sprawling track, not dominant against it —
-// this is a modest bump over pure physics-accurate size, not the arcade-toy scale tried
-// earlier. Physics collision radius stays untouched either way.
-R3.TRUCK_SCALE = 1.15;
+// Real arcade trucks sit at ~half their lane width. With 64px lanes, scale 1.0 puts the
+// 36-unit model at ~0.55 of the lane — the cabinet's proportion. Physics untouched.
+R3.TRUCK_SCALE = 1.0;
 
 R3.buildTruckMesh = (colorIdx, chassisIdx) => {
   const pal = SPR.PALETTES[colorIdx];
