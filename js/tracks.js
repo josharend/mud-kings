@@ -214,16 +214,17 @@ TRK.THEME_CYCLE = ['day', 'day', 'winter', 'night', 'day', 'night', 'winter', 'n
 
 TRK.THEMES = {
   day: {
-    dirt: (j) => `rgb(${192 + j},${138 + j},${82 + j})`,
-    dSpeck1: '#a06f3c', dSpeck2: '#d4a06a', pebble: '#8a6a48',
+    // saturated rust-orange dirt with strong value range — mid-tan read as washed out
+    dirt: (j) => `rgb(${198 + j},${120 + j},${62 + j})`,
+    dSpeck1: '#8f5626', dSpeck2: '#d9995c', pebble: '#8a6a48',
     // "grass" = the non-drivable infield. The real arcade is nearly all dirt — rough
     // dark scrub between lanes, not golf-course green (green read as mini-golf).
-    grass: '#7a4e2a', gSpeck1: '#8f5f36', gSpeck2: '#5c3a1e',
+    grass: '#8a4f24', gSpeck1: '#a05f2e', gSpeck2: '#63350f',
     waterBase: '#3f6f9e', waterDark: '#35608c', waterGlint: '#7fa8d0', waterRim: '#b89060',
-    mogulHi: '#dca86b', mogulLo: '#8a5a33', mogulMid: '#c89058',
-    rut1: 'rgba(96,58,30,0.20)', rut2: 'rgba(70,42,22,0.20)',
+    mogulHi: '#e8a95e', mogulLo: '#7d4418', mogulMid: '#c07f40',
+    rut1: 'rgba(90,46,16,0.30)', rut2: 'rgba(62,32,12,0.30)',
     glintCol: 'rgba(180,215,245,0.7)',
-    dirtBase: '#b8824e', dirtDark: '#4a2a12', dirtLight: '#e0b684',
+    dirtBase: '#bd7a44', dirtDark: '#54280e', dirtLight: '#e3a86a',
     mudBase: '#5c3a20', mudDark: '#281608', mudLight: '#6e4a28',
     railA: '#c8342a', railADk: '#8e1f17', railB: '#e6e2d6', railBDk: '#b8b4aa',
   },
@@ -241,6 +242,62 @@ TRK.THEMES = {
   },
 };
 TRK.THEMES.night = TRK.THEMES.day; // night = day colors + darkening pass
+
+// ---------- shared terrain height field ----------
+// Used by BOTH the baked relief shading in the 2D texture AND the 3D ground displacement,
+// so painted light and actual geometry always agree. The track is carved into a dirt bowl:
+// berm height grows with BFS distance from the drivable corridor (ridges between lanes,
+// mesas in wide infields), plus gentle deterministic noise; the stands/wall ring stays flat.
+TRK.BERM_AMP = 24;
+TRK.NOISE_AMP = 5;
+TRK.mkHeightField = (track) => {
+  const CO = TRK.COLS, RO = TRK.ROWS;
+  const DRIV = { '.': 1, 'S': 1, 'J': 1, 'M': 1, 'W': 1 };
+  const dist = new Int16Array(CO * RO).fill(999);
+  const queue = [];
+  for (let ty = 0; ty < RO; ty++) for (let tx = 0; tx < CO; tx++) {
+    if (DRIV[track.grid[ty][tx]]) { dist[ty * CO + tx] = 0; queue.push(ty * CO + tx); }
+  }
+  for (let qi = 0; qi < queue.length; qi++) {
+    const i = queue[qi], tx = i % CO, ty = (i / CO) | 0, d = dist[i];
+    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = tx + ox, ny = ty + oy;
+      if (nx < 0 || ny < 0 || nx >= CO || ny >= RO) continue;
+      const j = ny * CO + nx;
+      if (dist[j] > d + 1) { dist[j] = d + 1; queue.push(j); }
+    }
+  }
+  const tileH = new Float32Array(CO * RO);
+  for (let ty = 0; ty < RO; ty++) for (let tx = 0; tx < CO; tx++) {
+    const ch = track.grid[ty][tx], i = ty * CO + tx;
+    if (ch === 'G' || ch === '#' || DRIV[ch]) { tileH[i] = 0; continue; }
+    tileH[i] = Math.min(dist[i], 3) / 3 * TRK.BERM_AMP;
+  }
+  // deterministic per-track noise (seeded from the name so it never re-randomizes)
+  let hsh = 0;
+  for (let i = 0; i < track.name.length; i++) hsh = (hsh * 31 + track.name.charCodeAt(i)) | 0;
+  const rnd = U.rng((hsh >>> 0) || 1);
+  const GX = 10, GZ = 10, pts = [];
+  for (let i = 0; i < GX * GZ; i++) pts.push(rnd() * 2 - 1);
+  const noise = (wx, wz) => {
+    const gx = U.clamp(wx / TRK.W * (GX - 1), 0, GX - 1.0001);
+    const gz = U.clamp(wz / TRK.H * (GZ - 1), 0, GZ - 1.0001);
+    const x0 = gx | 0, z0 = gz | 0, fx = gx - x0, fz = gz - z0;
+    const h00 = pts[z0 * GX + x0], h10 = pts[z0 * GX + x0 + 1];
+    const h01 = pts[(z0 + 1) * GX + x0], h11 = pts[(z0 + 1) * GX + x0 + 1];
+    return (h00 + (h10 - h00) * fx) * (1 - fz) + (h01 + (h11 - h01) * fx) * fz;
+  };
+  return (wx, wz) => {
+    const gx = U.clamp(wx / 16 - 0.5, 0, CO - 1.0001), gz = U.clamp(wz / 16 - 0.5, 0, RO - 1.0001);
+    const x0 = gx | 0, z0 = gz | 0, x1 = Math.min(x0 + 1, CO - 1), z1 = Math.min(z0 + 1, RO - 1);
+    const fx = gx - x0, fz = gz - z0;
+    const h0 = tileH[z0 * CO + x0] + (tileH[z0 * CO + x1] - tileH[z0 * CO + x0]) * fx;
+    const h1 = tileH[z1 * CO + x0] + (tileH[z1 * CO + x1] - tileH[z1 * CO + x0]) * fx;
+    const berm = h0 + (h1 - h0) * fz;
+    const edgeFade = U.clamp(Math.min(wx, wz, TRK.W - wx, TRK.H - wz) / 48 - 1, 0, 1);
+    return berm + noise(wx, wz) * TRK.NOISE_AMP * edgeFade;
+  };
+};
 
 // ---------- track factory ----------
 // season = one pass through all base tracks; subsequent seasons mirror + add hazards
@@ -383,6 +440,15 @@ TRK.render = (track, seed) => {
           g.fillStyle = '#34343c'; g.beginPath(); g.arc(jx, jy, 1.8, 0, U.TAU); g.fill();
           g.fillStyle = '#4a4a54'; g.fillRect(jx - 1, jy - 2, 1, 1);
         }
+      } else if (rnd() < 0.32) {
+        // scattered dirt humps — the cabinet's infield is dense with sculpted bumps,
+        // never a flat empty expanse
+        const n = 2 + (rnd() * 3 | 0);
+        for (let b = 0; b < n; b++) {
+          const bx = x + 2 + (rnd() * 11 | 0), by = y + 2 + (rnd() * 11 | 0), r2 = 2 + rnd() * 2;
+          g.fillStyle = C.mogulLo; g.beginPath(); g.arc(bx + 0.8, by + 0.8, r2, 0, U.TAU); g.fill();
+          g.fillStyle = C.mogulHi; g.beginPath(); g.arc(bx - 0.5, by - 0.5, r2 * 0.72, 0, U.TAU); g.fill();
+        }
       } else if (rnd() < 0.05) {
         R(x + 4, y + 6, 7, 5, '#c8a860'); R(x + 4, y + 6, 7, 1, '#e0c888'); R(x + 4, y + 8, 7, 1, '#a8884a');
       } else if (rnd() < 0.04) {
@@ -485,6 +551,20 @@ TRK.render = (track, seed) => {
   g.strokeStyle = C.rut1; g.lineWidth = 12; g.stroke();
   g.strokeStyle = C.rut2; g.lineWidth = 4; g.stroke();
   g.restore();
+
+  // baked relief shading: sample the SAME height field the 3D ground displaces with,
+  // and light every slope from the north-west — ridge crests get bright warm light,
+  // flanks and gullies fall into shadow. This painted light is what makes the whole
+  // playfield read as sculpted dirt instead of a flat colored diagram.
+  const hf = TRK.mkHeightField(track);
+  for (let y = 48; y < TRK.H - 48; y += 4) for (let x = 48; x < TRK.W - 48; x += 4) {
+    const ch = track.grid[y >> 4][x >> 4];
+    if (ch === 'G' || ch === '#') continue;
+    const h = hf(x, y);
+    const b = U.clamp((-(hf(x + 4, y) - h) - (hf(x, y + 4) - h)) * 0.10, -0.5, 0.5);
+    if (b > 0.02) { g.fillStyle = `rgba(255,212,150,${(b * 0.5).toFixed(2)})`; g.fillRect(x, y, 4, 4); }
+    else if (b < -0.02) { g.fillStyle = `rgba(28,12,4,${(-b * 0.66).toFixed(2)})`; g.fillRect(x, y, 4, 4); }
+  }
 
   // stadium roofline canopy along the very outer edge — angled fascia + support posts
   const roofCol1 = '#2a2830', roofCol2 = '#38343e';

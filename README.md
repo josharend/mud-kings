@@ -73,14 +73,18 @@ you, it just stops gripping.
 ## Graphics
 
 The race world is real 3D, rendered with Three.js/WebGL, staged like the
-classic cabinet: the track is **carved into a dirt bowl** — berm ridges rise
-between adjacent lanes and wide infields become mesas, computed from the
-track's own shape (height grows with distance from the racing corridor), not
-random hills. The platform sits inside a proper stadium: a dark arena floor,
-four crowd-packed grandstand walls with rooflines, and strings of colored
-**pennant flags** sagging across the track on chrome posts. The palette is
-nearly all rich dirt — the non-drivable infield is rough scrub, not
-golf-course green.
+classic cabinet: a **near-top-down camera framed so the track fills the whole
+screen**, over dirt that is **carved into a bowl** — berm ridges rise between
+adjacent lanes and wide infields become mesas, computed from the track's own
+shape (height grows with distance from the racing corridor), not random
+hills. The same height field drives both the displaced 3D ground AND a
+**baked relief-shading pass** painted into the ground texture — every ridge
+gets a sunlit crest and shadowed flank, so the whole playfield reads as
+sculpted dirt. The palette is saturated rust-orange, the infield is dense
+with scattered dirt humps and scrub, and strings of colored **pennant
+flags** sag across the track on chrome posts (tilted toward the camera so
+they read from above). The platform sits inside a proper stadium: dark arena
+floor, four crowd-packed grandstand walls with rooflines.
 
 A directional sun casts real shadows, the candy-striped barrier rail is
 raised geometry hugging every curve, and moguls are mounds that cast their

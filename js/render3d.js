@@ -9,35 +9,8 @@ const R3 = {
   trackGroup: null, truckMeshes: [], truckKey: [], pickupMeshes: [],
   WORLD_W: 512, WORLD_H: 480, SCALE_Z: 0.8,
   _heightFn: null,                // current track's terrain height sampler — world(x,z) -> y
-  TERRAIN_TRACK_AMP: 5,           // gentle organic undulation layered over everything
-  BERM_AMP: 24,                   // dirt berms/ridges rise to this between lanes (carved-bowl look)
-};
-
-// deterministic string hash -> RNG seed, so each track's terrain is fixed (same track,
-// same hills every time) without needing a numeric seed threaded through from the caller
-R3._hashSeed = (str) => {
-  let h = 0;
-  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0;
-  return (h >>> 0) || 1;
-};
-
-// smooth rolling terrain via bilinear interpolation over a coarse random control grid —
-// gentle natural undulation, not spiky noise. amp is a Y-offset scale (world units).
-R3._mkHeightFn = (seedStr) => {
-  const rnd = U.rng(R3._hashSeed(seedStr));
-  const GX = 10, GZ = 10;
-  const pts = [];
-  for (let i = 0; i < GX * GZ; i++) pts.push(rnd() * 2 - 1);
-  return (wx, wz, amp) => {
-    const gx = U.clamp(wx / R3.WORLD_W * (GX - 1), 0, GX - 1.0001);
-    const gz = U.clamp(wz / R3.WORLD_H * (GZ - 1), 0, GZ - 1.0001);
-    const x0 = gx | 0, z0 = gz | 0, x1 = x0 + 1, z1 = z0 + 1;
-    const fx = gx - x0, fz = gz - z0;
-    const h00 = pts[z0 * GX + x0], h10 = pts[z0 * GX + x1];
-    const h01 = pts[z1 * GX + x0], h11 = pts[z1 * GX + x1];
-    const hx0 = h00 + (h10 - h00) * fx, hx1 = h01 + (h11 - h01) * fx;
-    return (hx0 + (hx1 - hx0) * fz) * amp;
-  };
+  // terrain amplitudes live in TRK (BERM_AMP / NOISE_AMP): the height field is shared
+  // between the 2D baked-relief shading and the 3D displacement via TRK.mkHeightField
 };
 
 R3.init = (canvas) => {
@@ -55,12 +28,12 @@ R3.init = (canvas) => {
   R3.scene.background = new THREE.Color(0x0b0a10);
   R3.scene.fog = new THREE.Fog(0x0b0a10, 950, 1900);
 
-  // shallower, more raking angle than a near-top-down view — a steep angle flattens out
-  // terrain elevation almost entirely, and this is what actually sells rolling 3D ground.
-  // Framed tight so the stadium fills the screen like the cabinet, not a diorama in a void.
+  // near-top-down like the cabinet, framed so the track fills the whole screen — relief
+  // reads through the baked slope shading in the ground texture (which matches the real
+  // displaced geometry exactly), not through a raked camera angle wasting screen space
   R3.camera = new THREE.PerspectiveCamera(40, R3.WORLD_W / R3.WORLD_H, 20, 3000);
-  R3.camera.position.set(R3.WORLD_W / 2, 350, R3.WORLD_H / 2 + 528);
-  R3.camera.lookAt(R3.WORLD_W / 2, 2, R3.WORLD_H / 2 + 4);
+  R3.camera.position.set(R3.WORLD_W / 2, 610, R3.WORLD_H / 2 + 300);
+  R3.camera.lookAt(R3.WORLD_W / 2, 0, R3.WORLD_H / 2 - 6);
 
   R3.amb = new THREE.AmbientLight(0xffffff, 0.62);
   R3.scene.add(R3.amb);
@@ -176,47 +149,10 @@ R3.buildTrack = (track) => {
   const isRailAt = (nx, ny) => nx >= 0 && ny >= 0 && nx < TRK.COLS && ny < TRK.ROWS &&
     !DRIVABLE[track.grid[ny][nx]] && track.grid[ny][nx] !== '#' && track.grid[ny][nx] !== 'G';
 
-  // purposeful arcade terrain, not random hills: the track is CARVED into a dirt bowl.
-  // Berm height grows with BFS distance from the drivable corridor, so smooth dirt ridges
-  // rise automatically between adjacent lanes and wide infields become mesas — exactly
-  // the reference cabinet's look. The stands/wall ring is pinned dead flat so the
-  // platform sits flush on the arena floor instead of waving like a carpet edge.
+  // carved-bowl terrain: the SAME shared height field the 2D texture bakes its relief
+  // shading from (TRK.mkHeightField) — painted light and displaced geometry always agree
   const CO = TRK.COLS, RO = TRK.ROWS;
-  const dist = new Int16Array(CO * RO).fill(999);
-  const queue = [];
-  for (let ty = 0; ty < RO; ty++) for (let tx = 0; tx < CO; tx++) {
-    if (DRIVABLE[track.grid[ty][tx]]) { dist[ty * CO + tx] = 0; queue.push(ty * CO + tx); }
-  }
-  for (let qi = 0; qi < queue.length; qi++) {
-    const i = queue[qi], tx = i % CO, ty = (i / CO) | 0, d = dist[i];
-    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const nx2 = tx + ox, ny2 = ty + oy;
-      if (nx2 < 0 || ny2 < 0 || nx2 >= CO || ny2 >= RO) continue;
-      const j = ny2 * CO + nx2;
-      if (dist[j] > d + 1) { dist[j] = d + 1; queue.push(j); }
-    }
-  }
-  const tileH = new Float32Array(CO * RO);
-  for (let ty = 0; ty < RO; ty++) for (let tx = 0; tx < CO; tx++) {
-    const ch = track.grid[ty][tx], i = ty * CO + tx;
-    if (ch === 'G' || ch === '#' || DRIVABLE[ch]) { tileH[i] = 0; continue; }
-    tileH[i] = Math.min(dist[i], 3) / 3 * R3.BERM_AMP;
-  }
-  const rawNoise = R3._mkHeightFn(track.name);
-  const bermAt = (wx, wz) => {
-    // bilinear over tile centers — smooth mounds, no terraced steps
-    const gx = U.clamp(wx / 16 - 0.5, 0, CO - 1.0001), gz = U.clamp(wz / 16 - 0.5, 0, RO - 1.0001);
-    const x0 = gx | 0, z0 = gz | 0, x1 = Math.min(x0 + 1, CO - 1), z1 = Math.min(z0 + 1, RO - 1);
-    const fx = gx - x0, fz = gz - z0;
-    const h0 = tileH[z0 * CO + x0] + (tileH[z0 * CO + x1] - tileH[z0 * CO + x0]) * fx;
-    const h1 = tileH[z1 * CO + x0] + (tileH[z1 * CO + x1] - tileH[z1 * CO + x0]) * fx;
-    return h0 + (h1 - h0) * fz;
-  };
-  const heightAt = (wx, wz) => {
-    // organic noise fades to zero at the platform border so the outer ring stays flat
-    const edgeFade = U.clamp(Math.min(wx, wz, R3.WORLD_W - wx, R3.WORLD_H - wz) / 48 - 1, 0, 1);
-    return bermAt(wx, wz) + rawNoise(wx, wz, R3.TERRAIN_TRACK_AMP) * edgeFade;
-  };
+  const heightAt = TRK.mkHeightField(track);
   R3._heightFn = heightAt;
 
   const tex = new THREE.CanvasTexture(track.canvas);
@@ -298,7 +234,9 @@ R3.buildTrack = (track) => {
         const t2 = (k + 1) / (N - 1);
         const x2 = ax + (bx - ax) * t2, z2 = az + (bz - az) * t2, y2 = sagY(t2);
         const c = new THREE.Color(FLAG_COLS[k % FLAG_COLS.length]);
-        posArr.push(x, y, z, x2, y2, z2, (x + x2) / 2, (y + y2) / 2 - 6, (z + z2) / 2);
+        // apex leans down AND toward the camera (+z) so the triangles stay readable
+        // from the near-top-down view instead of compressing into an invisible line
+        posArr.push(x, y, z, x2, y2, z2, (x + x2) / 2, (y + y2) / 2 - 5, (z + z2) / 2 + 6);
         for (let v = 0; v < 3; v++) colArr.push(c.r, c.g, c.b);
       }
     }
