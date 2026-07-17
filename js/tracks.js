@@ -75,133 +75,175 @@ const _mkSlots = (p0, p1) => {
 
 // ---------- track centerlines (tile units) ----------
 // Each is a closed loop: point[i] connects to point[i+1], wrapping last-to-first.
-// Grid discipline: turn columns/rows are always >=5 tiles apart so corridors (halfWidth
-// 1.4-2.2) never bleed into each other. This is what replaced the old "wide ring around
-// one island" tracks with real winding, narrow, technical circuits.
-const PATH_DUSTBOWL  = [[8, 23], [8, 18], [18, 18], [18, 12], [8, 12], [8, 7], [18, 7], [25, 7], [25, 23]];
-const PATH_HOURGLASS = [[8, 22], [8, 7], [13, 7], [13, 22], [18, 22], [18, 7], [23, 7], [23, 22]];
-const PATH_SPLASHDOWN = [[8, 7], [8, 12], [18, 12], [18, 18], [8, 18], [8, 23], [18, 23], [25, 23], [25, 7]];
-const PATH_HAIRPIN   = [[8, 23], [8, 19], [18, 19], [18, 15], [8, 15], [8, 11], [18, 11], [18, 7], [25, 7], [25, 23]];
-const PATH_COLOSSEUM = [[8, 23], [8, 7], [25, 7], [25, 15], [14, 15], [14, 23]];
-const PATH_SIDEWINDER = [[23, 22], [23, 7], [18, 7], [18, 22], [13, 22], [13, 7], [8, 7], [8, 22]];
-const PATH_GAUNTLET  = [[23, 23], [23, 7], [13, 7], [13, 18], [7, 18], [7, 23]];
-const PATH_HOOK       = [[8, 22], [8, 7], [23, 7], [23, 22], [18, 22], [18, 17], [13, 17], [13, 22]];
+// DENSE-MAZE discipline (the real cabinet packs 4-6 parallel lanes per screen):
+// - half-integer vertex coords + halfWidth 1.4 carve a clean 3-tile corridor (48px,
+//   the width validated playable on the old Hairpin) — integer coords carve only 2.
+// - lane pitch 4 with bulge 0.5 leaves exactly 1 solid ridge tile between lanes AND
+//   between adjacent same-row vertex bulges (pitch >= 2*(hw+bulge)+0.2, checked per
+//   track) — merged bulges would fuse two lanes into one wide corridor, which both
+//   looks wrong and legally shortcuts the lap via the waypoint lookahead window.
+// - serpentines need an EVEN lane count when the return lane sits on one side, or the
+//   last lane ends at the wrong end of the field. Every path starts mid-return-lane so
+//   the start grid has carved corridor behind it (start-slot depth is only ~1.8 tiles).
+// - deliberate mud 'shortcut' rects bridge one ridge, jumping <=3 waypoint indices —
+//   inside the WP_LOOKAHEAD=4 window, so laps still count.
+const PATH_DUSTBOWL = [[15.5, 23.5], [5.5, 23.5], [5.5, 7], [9.5, 7], [9.5, 19.5], [13.5, 19.5],
+  [13.5, 7], [17.5, 7], [17.5, 19.5], [21.5, 19.5], [21.5, 7], [25.5, 7], [25.5, 23.5]];
+const PATH_HOURGLASS = [[25.5, 14], [25.5, 6.5], [7, 6.5], [7, 11.5], [20.5, 11.5], [20.5, 16.5],
+  [7, 16.5], [7, 21.5], [25.5, 21.5]];
+const PATH_SPLASHDOWN = [[14, 5.5], [6.5, 5.5], [6.5, 22], [11.5, 22], [11.5, 10], [16.5, 10],
+  [16.5, 22], [21.5, 22], [21.5, 5.5]];
+const PATH_HAIRPIN = [[15.5, 23.5], [25.5, 23.5], [25.5, 7], [21.5, 7], [21.5, 20], [17.5, 20],
+  [17.5, 7], [13.5, 7], [13.5, 20], [9.5, 20], [9.5, 7], [5.5, 7], [5.5, 23.5]];
+const PATH_COLOSSEUM = [[16, 23.5], [6.5, 23.5], [6.5, 7], [13, 7], [13, 19], [19.5, 19],
+  [19.5, 7], [26, 7], [26, 23.5]];
+const PATH_SIDEWINDER = [[5.5, 14], [5.5, 6.5], [22, 6.5], [22, 11.5], [9.5, 11.5], [9.5, 16.5],
+  [26, 16.5], [26, 21.5], [5.5, 21.5]];
+const PATH_GAUNTLET = [[15.5, 21.5], [5.5, 21.5], [5.5, 9], [9.5, 9], [9.5, 17.5], [13.5, 17.5],
+  [13.5, 9], [17.5, 9], [17.5, 17.5], [21.5, 17.5], [21.5, 9], [25.5, 9], [25.5, 21.5]];
+const PATH_HOOK = [[12, 23.5], [5.5, 23.5], [5.5, 6], [26, 6], [26, 23.5], [17, 23.5],
+  [17, 11], [21, 11]];
 
 // ---------- track definitions ----------
 // wps/slots/pickups in tile units (1 unit = 16px)
 TRK.defs = [
   {
+    // 6 parallel vertical lanes + bottom return lane; mud shortcut bridges lanes 3->4
     name: 'DUST BOWL',
     build: (g) => {
-      _carvePath(g, PATH_DUSTBOWL, 1.8, '.', 0.8);
-      _rect(g, 12, 12, 15, 18, 'M');       // shortcut: mud connector cutting the row12<->row18 turn
-      _rect(g, 14, 17, 17, 18, 'J');       // moguls launch you into the column-18 turn
-      _rect(g, 10, 7, 13, 8, 'M');
+      _carvePath(g, PATH_DUSTBOWL, 1.4, '.', 0.5);
+      _rect(g, 8, 12, 10, 14, 'J');    // lane 2
+      _rect(g, 16, 10, 18, 12, 'M');   // lane 4
+      _rect(g, 20, 14, 22, 16, 'W');   // lane 5
+      _rect(g, 14, 12, 16, 14, 'M');   // shortcut: bridges the ridge between lanes 3 and 4
       _startPatch(g, PATH_DUSTBOWL[0]);
     },
     wps: PATH_DUSTBOWL,
     slots: _mkSlots(PATH_DUSTBOWL[0], PATH_DUSTBOWL[1]),
     startDir: _startDir(PATH_DUSTBOWL[0], PATH_DUSTBOWL[1]),
-    pickups: [{ x: 13, y: 15, k: 'nitro' }, { x: 21, y: 8, k: 'money' }, { x: 5, y: 15, k: 'money' }],
+    pickups: [{ x: 15.5, y: 13, k: 'nitro' }, { x: 21.5, y: 11, k: 'money' }, { x: 5.5, y: 15, k: 'money' }],
   },
   {
+    // 4 horizontal lanes + east return lane; wider corridors, sweeping flow
     name: 'THE HOURGLASS',
     build: (g) => {
-      _carvePath(g, PATH_HOURGLASS, 1.8, '.', 0.8);
-      _rect(g, 12, 13, 14, 16, 'M');       // the pinch: mud waist in the middle column
-      _rect(g, 17, 10, 19, 12, 'W');
-      _rect(g, 7, 14, 9, 16, 'J');          // mid-pass, clear of the turn vertices
+      _carvePath(g, PATH_HOURGLASS, 1.6, '.', 0.35);
+      _rect(g, 11, 10, 14, 12, 'W');   // lane 2
+      _rect(g, 9, 15, 12, 17, 'J');    // lane 3
+      _rect(g, 15, 20, 18, 22, 'M');   // lane 4
+      _rect(g, 12, 12, 14, 15, 'M');   // shortcut: bridges lanes 2 and 3
       _startPatch(g, PATH_HOURGLASS[0]);
     },
     wps: PATH_HOURGLASS,
     slots: _mkSlots(PATH_HOURGLASS[0], PATH_HOURGLASS[1]),
     startDir: _startDir(PATH_HOURGLASS[0], PATH_HOURGLASS[1]),
-    pickups: [{ x: 13, y: 14, k: 'nitro' }, { x: 8, y: 15, k: 'money' }, { x: 23, y: 15, k: 'money' }],
+    pickups: [{ x: 13, y: 13.5, k: 'nitro' }, { x: 10.5, y: 16, k: 'money' }, { x: 25.5, y: 18, k: 'money' }],
   },
   {
+    // 4 vertical lanes + TOP return lane; winter — every lane crosses ice
     name: 'SPLASHDOWN',
     build: (g) => {
-      _carvePath(g, PATH_SPLASHDOWN, 1.8, '.', 0.8);
-      _rect(g, 11, 12, 14, 13, 'W');
-      _rect(g, 11, 18, 14, 19, 'W');
-      _rect(g, 20, 23, 23, 24, 'M');
-      _rect(g, 9, 7, 12, 8, 'J');
+      _carvePath(g, PATH_SPLASHDOWN, 1.6, '.', 0.35);
+      _rect(g, 5, 13, 8, 15, 'W');
+      _rect(g, 10, 16, 13, 18, 'W');
+      _rect(g, 15, 12, 18, 14, 'W');
+      _rect(g, 20, 17, 23, 19, 'M');
+      _rect(g, 12, 15, 15, 17, 'M');   // shortcut: bridges lanes 2 and 3
       _startPatch(g, PATH_SPLASHDOWN[0]);
     },
     wps: PATH_SPLASHDOWN,
     slots: _mkSlots(PATH_SPLASHDOWN[0], PATH_SPLASHDOWN[1]),
     startDir: _startDir(PATH_SPLASHDOWN[0], PATH_SPLASHDOWN[1]),
-    pickups: [{ x: 16, y: 12, k: 'nitro' }, { x: 16, y: 18, k: 'money' }, { x: 22, y: 7, k: 'money' }],
+    pickups: [{ x: 14, y: 16, k: 'nitro' }, { x: 6.5, y: 14, k: 'money' }, { x: 21.5, y: 10, k: 'money' }],
   },
   {
+    // 6 lanes like Dust Bowl but run the OTHER way, no shortcut, meaner hazards — the monster
     name: 'HAIRPIN HAVOC',
     build: (g) => {
-      _carvePath(g, PATH_HAIRPIN, 1.4, '.', 0.9);   // narrowest track — deliberately the most technical
-      _rect(g, 12, 15, 14, 16, 'M');        // mid-pass, clear of the turn vertices
-      _rect(g, 11, 10, 13, 11, 'J');        // mid-pass, clear of the turn vertices
+      _carvePath(g, PATH_HAIRPIN, 1.4, '.', 0.5);
+      // hazard EXIT zones (2-4 tiles downstream in travel direction) must stay clear of
+      // corners: a mogul landing or mud crawl inside the corner-blend zone pins trucks
+      // on the wall. Lane travel here: col25.5 north, col21.5 south, col13.5 south.
+      _rect(g, 24, 15, 26, 17, 'J');   // northbound: launch 17, land ~13 — mid-lane
+      _rect(g, 12, 10, 14, 12, 'J');   // southbound: launch 12, land ~15 — mid-lane
+      _rect(g, 20, 11, 22, 13, 'M');   // southbound: mud ends 4 tiles before the corner
+      _rect(g, 8, 13, 10, 15, 'M');
+      _rect(g, 16, 16, 18, 18, 'W');
       _startPatch(g, PATH_HAIRPIN[0]);
     },
     wps: PATH_HAIRPIN,
     slots: _mkSlots(PATH_HAIRPIN[0], PATH_HAIRPIN[1]),
     startDir: _startDir(PATH_HAIRPIN[0], PATH_HAIRPIN[1]),
-    pickups: [{ x: 13, y: 19, k: 'nitro' }, { x: 13, y: 7, k: 'money' }, { x: 25, y: 15, k: 'money' }],
+    pickups: [{ x: 17.5, y: 12, k: 'nitro' }, { x: 25.5, y: 18, k: 'money' }, { x: 9.5, y: 10, k: 'money' }],
   },
   {
+    // 4 wide grand lanes — the fast open one, with a big mogul field and a pond
     name: 'THE COLOSSEUM',
     build: (g) => {
-      _carvePath(g, PATH_COLOSSEUM, 2.2, '.', 1.0);  // widest track — the grand sweeping one
-      _rect(g, 12, 7, 20, 8, 'J');
-      _rect(g, 20, 14, 23, 16, 'W');
-      _rect(g, 10, 22, 13, 23, 'M');
+      _carvePath(g, PATH_COLOSSEUM, 2.2, '.', 0.7);
+      _rect(g, 10, 10, 14, 12, 'J');
+      _rect(g, 17, 13, 21, 16, 'W');
+      _rect(g, 24, 11, 27, 14, 'M');
       _startPatch(g, PATH_COLOSSEUM[0]);
     },
     wps: PATH_COLOSSEUM,
     slots: _mkSlots(PATH_COLOSSEUM[0], PATH_COLOSSEUM[1]),
     startDir: _startDir(PATH_COLOSSEUM[0], PATH_COLOSSEUM[1]),
-    pickups: [{ x: 16, y: 7, k: 'nitro' }, { x: 8, y: 15, k: 'money' }, { x: 22, y: 15, k: 'money' }],
+    pickups: [{ x: 13, y: 15, k: 'nitro' }, { x: 19, y: 14.5, k: 'money' }, { x: 6.5, y: 12, k: 'money' }],
   },
   {
+    // snake: 3 full-width lanes + west return + an east wiggle leg between rows
     name: 'SIDEWINDER',
     build: (g) => {
-      _carvePath(g, PATH_SIDEWINDER, 1.8, '.', 0.8);
-      _rect(g, 17, 13, 19, 16, 'M');
-      _rect(g, 12, 13, 14, 16, 'J');        // mid-pass, clear of the turn vertices
-      _rect(g, 7, 13, 9, 16, 'W');
+      _carvePath(g, PATH_SIDEWINDER, 1.4, '.', 0.5);
+      _rect(g, 12, 5, 14, 7, 'M');     // row 1
+      _rect(g, 15, 10, 18, 12, 'J');   // row 2
+      _rect(g, 11, 15, 13, 17, 'W');   // row 3
+      _rect(g, 17, 20, 19, 22, 'J');   // row 4
+      _rect(g, 14, 12, 16, 15, 'M');   // shortcut: bridges rows 2 and 3
       _startPatch(g, PATH_SIDEWINDER[0]);
     },
     wps: PATH_SIDEWINDER,
     slots: _mkSlots(PATH_SIDEWINDER[0], PATH_SIDEWINDER[1]),
     startDir: _startDir(PATH_SIDEWINDER[0], PATH_SIDEWINDER[1]),
-    pickups: [{ x: 18, y: 14, k: 'nitro' }, { x: 23, y: 14, k: 'money' }, { x: 8, y: 14, k: 'money' }],
+    pickups: [{ x: 16.5, y: 11, k: 'nitro' }, { x: 26, y: 19, k: 'money' }, { x: 5.5, y: 17, k: 'money' }],
   },
   {
+    // 6 short lanes, return lane below, one hazard dead-center in EVERY lane — the gauntlet
     name: 'THE GAUNTLET',
     build: (g) => {
-      _carvePath(g, PATH_GAUNTLET, 1.8, '.', 0.8);
-      _rect(g, 22, 12, 24, 14, 'M');
-      _rect(g, 11, 10, 14, 11, 'J');
-      _rect(g, 6, 20, 9, 22, 'W');
-      _rect(g, 17, 18, 20, 19, 'M');
+      _carvePath(g, PATH_GAUNTLET, 1.4, '.', 0.5);
+      // winter track: only the two OUTER lanes get water->ice (three ice patches in
+      // 48px corridors was a rescue storm). Placement follows lane travel direction —
+      // lanes alternate N/S/N/S/N/S, and each hazard's EXIT (mogul landing ~3 tiles
+      // downstream, mud crawl-out) must land mid-lane, clear of the corner-blend zone.
+      _rect(g, 4, 13, 6, 15, 'W');     // lane1 northbound: ice exits 4 tiles before corner
+      _rect(g, 8, 10, 10, 12, 'M');    // lane2 southbound: mud right after entry corner
+      _rect(g, 12, 14, 14, 16, 'J');   // lane3 northbound: launch 16, land ~12 mid-lane
+      _rect(g, 16, 10, 18, 12, 'M');   // lane4 southbound: mud after entry
+      _rect(g, 20, 14, 22, 16, 'J');   // lane5 northbound: launch 16, land ~12
+      _rect(g, 24, 12, 26, 14, 'W');   // lane6 southbound: long run-out to the return lane
       _startPatch(g, PATH_GAUNTLET[0]);
     },
     wps: PATH_GAUNTLET,
     slots: _mkSlots(PATH_GAUNTLET[0], PATH_GAUNTLET[1]),
     startDir: _startDir(PATH_GAUNTLET[0], PATH_GAUNTLET[1]),
-    pickups: [{ x: 23, y: 16, k: 'nitro' }, { x: 13, y: 12, k: 'money' }, { x: 7, y: 20, k: 'money' }],
+    pickups: [{ x: 13.5, y: 15.5, k: 'nitro' }, { x: 25.5, y: 13, k: 'money' }, { x: 5.5, y: 13, k: 'money' }],
   },
   {
+    // big outer ring, an inner hook curling to a dead-ahead tip, and a diagonal chute home
     name: 'THE HOOK',
     build: (g) => {
-      _carvePath(g, PATH_HOOK, 1.8, '.', 0.8);
-      _rect(g, 12, 7, 20, 8, 'J');
-      _rect(g, 14, 17, 17, 18, 'M');
-      _rect(g, 7, 14, 9, 16, 'W');
+      _carvePath(g, PATH_HOOK, 1.6, '.', 0.5);
+      _rect(g, 10, 5, 13, 7, 'J');
+      _rect(g, 24, 13, 27, 16, 'W');
+      _rect(g, 15, 14, 18, 16, 'M');
       _startPatch(g, PATH_HOOK[0]);
     },
     wps: PATH_HOOK,
     slots: _mkSlots(PATH_HOOK[0], PATH_HOOK[1]),
     startDir: _startDir(PATH_HOOK[0], PATH_HOOK[1]),
-    pickups: [{ x: 15, y: 17, k: 'nitro' }, { x: 23, y: 14, k: 'money' }, { x: 8, y: 18, k: 'money' }],
+    pickups: [{ x: 16, y: 18, k: 'nitro' }, { x: 21, y: 11, k: 'money' }, { x: 26, y: 10, k: 'money' }],
   },
 ];
 
@@ -309,16 +351,12 @@ TRK.make = (raceIdx) => {
   const grid = _mkGrid();
   def.build(grid);
 
-  // extra scattered hazards on later visits
+  // NOTE: earlier wide-track versions scattered random extra hazards on later seasons.
+  // On today's dense 48px lanes a randomly-placed mogul at a corner recreates the
+  // launch-into-corner rescue storm (verified on mirrored Hairpin/Gauntlet), and every
+  // lane already carries a deliberately-placed hazard — so later seasons escalate purely
+  // through AI level, not random terrain.
   const lapAround = Math.floor(raceIdx / N);
-  if (lapAround > 0) {
-    const rnd = U.rng(1000 + raceIdx * 77);
-    let placed = 0, guard = 0;
-    while (placed < 8 && guard++ < 400) {
-      const x = 4 + ((rnd() * 24) | 0), y = 5 + ((rnd() * 20) | 0);
-      if (grid[y][x] === '.') { grid[y][x] = rnd() < 0.55 ? 'M' : 'J'; placed++; }
-    }
-  }
 
   let wps = def.wps.map(p => [p[0] * 16, p[1] * 16]);
   let slots = def.slots.map(p => [p[0] * 16, p[1] * 16]);

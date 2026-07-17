@@ -46,25 +46,27 @@ lift you back onto the racing line.
 
 ## Tracks
 
-Every track is a narrow, winding single-lane circuit — like the real arcade
-machine, not a wide loop around one island. A season runs all eight, one per
-race:
+Every track is a dense multi-lane maze — 4-6 parallel lanes separated by thin
+dirt ridges lined with candy rail, packed edge to edge like the real cabinet.
+A season runs all eight, one per race:
 
-1. **DUST BOWL** — a 4-pass zigzag with a mud shortcut cutting straight
-   across the middle, skipping a whole leg of the lap if you commit to it.
-2. **THE HOURGLASS** — a tight vertical weave with a mud "waist" pinch in
-   the dead center.
-3. **SPLASHDOWN** — the same weave with water crossing two of the passes. *(winter)*
-4. **HAIRPIN HAVOC** — the narrowest track in the game, five passes packed
-   into a dense zigzag.
-5. **THE COLOSSEUM** — the widest, grandest sweep; a big mogul field and a pond.
-6. **SIDEWINDER** — a mirrored vertical weave, snaking the other way. *(night)*
-7. **THE GAUNTLET** — an L-shaped run packed with four hazards back to back.
-8. **THE HOOK** — a rectangular loop with a hook-shaped dip curling in
-   right before the finish. *(night)*
+1. **DUST BOWL** — six parallel lanes plus a return straight; a mud shortcut
+   bridges the middle ridge and legally skips two lanes if you dare it.
+2. **THE HOURGLASS** — four wide sweeping lanes stacked with a fast east
+   return, water, moguls, and a mud shortcut.
+3. **SPLASHDOWN** — four lanes, every one crossing ice, plus a shortcut. *(winter)*
+4. **HAIRPIN HAVOC** — six lanes run the hard way with five hazards and NO
+   shortcut — the monster.
+5. **THE COLOSSEUM** — four grand wide lanes; big mogul field, pond, mud.
+6. **SIDEWINDER** — a snake: three full-width rows, a west return, and an
+   east wiggle leg. *(night)*
+7. **THE GAUNTLET** — six short lanes, a hazard dead-center in every single
+   one. *(winter)*
+8. **THE HOOK** — a big outer ring, an inner hook curling to a dead-ahead
+   tip, and a diagonal chute home. *(night)*
 
-Later seasons re-run the eight as mirrored "II" variants with extra scattered
-hazards (and a "TURBO" tag from season 3 on).
+Later seasons re-run the eight as mirrored "II" variants (and a "TURBO" tag
+from season 3 on) with meaner AI.
 
 Races cycle through **day**, **night** (floodlights + headlights), and
 **winter** themes. In winter, water hazards freeze into ice — it barely slows

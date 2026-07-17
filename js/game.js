@@ -405,8 +405,9 @@ GAME._aiControl = (t, dt) => {
   const wp = wps[t.wpIdx % wps.length];
   const nwp = wps[(t.wpIdx + 1) % wps.length];
   const d = U.dist(t.x, t.y, wp[0], wp[1]);
-  // blend target toward next wp when close
-  const bl = U.clamp(1 - d / 70, 0, 0.8);
+  // blend target toward next wp when close — 52px radius matches the dense 48px lanes;
+  // the old 70px blend (tuned for 64-100px corridors) cut corners into the ridge walls
+  const bl = U.clamp(1 - d / 52, 0, 0.8);
   const tx = U.lerp(wp[0], nwp[0], bl), ty = U.lerp(wp[1], nwp[1], bl);
   const desired = Math.atan2(ty - t.y, tx - t.x);
   const diff = U.angDiff(t.heading, desired);
@@ -624,8 +625,12 @@ GAME._truckCollisions = () => {
     if (d >= R || d === 0) continue;
     const nx = dx / d, ny = dy / d;
     const push = (R - d) / 2;
-    a.x -= nx * push; a.y -= ny * push;
-    b.x += nx * push; b.y += ny * push;
+    // wall-aware separation: never shove a truck into a solid tile — on dense tracks
+    // with 1-tile ridges, an unchecked push embeds trucks in walls (instant rescue)
+    const ax2 = a.x - nx * push, ay2 = a.y - ny * push;
+    if (!TRK.solidAt(G.track, ax2, ay2)) { a.x = ax2; a.y = ay2; }
+    const bx2 = b.x + nx * push, by2 = b.y + ny * push;
+    if (!TRK.solidAt(G.track, bx2, by2)) { b.x = bx2; b.y = by2; }
     const van = a.vx * nx + a.vy * ny;
     const vbn = b.vx * nx + b.vy * ny;
     if (van - vbn > 0) {
